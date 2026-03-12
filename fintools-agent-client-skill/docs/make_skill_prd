@@ -4,6 +4,12 @@
 
 把 `agent-client-template` 封装成一个可直接被 Agent 系统调用的 Skill。
 
+## 重要提示
+
+- `fintools-agent-client-skill/agents_client/` 是受保护的上游客户端代码目录，后续调整默认不允许修改这里的文件
+- 如需修复运行流程、日志、产物落盘、目录结构或宿主集成行为，只能优先在 `scripts/`、`docs/`、`tests/` 等包装层处理
+- 只有在需求明确要求并得到额外确认时，才允许评估是否修改 `agents_client/`；默认一律视为禁改区
+
 这个 Skill 要解决三件事：
 
 - 调用远端 Deep Research Agent 或 Trading Agent

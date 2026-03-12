@@ -241,13 +241,9 @@ class RunAgentClientTests(unittest.TestCase):
                 self.assertEqual(called_args["FINTOOLS_RUNTIME_ENV_DIR"], "/tmp/fintools-agent-client-skill-runs/shared-envs/venv-py311-deadbeef")
                 self.assertEqual(called_cmd[1], "-u")
 
-    def test_run_inside_env_treats_streaming_report_as_success_even_when_client_returns_false(self):
+    def test_run_inside_env_uses_streaming_client_success_without_wrapper_download(self):
         with tempfile.TemporaryDirectory(prefix="fintools-agent-client-run-") as tmpdir:
             work_dir = Path(tmpdir)
-            reports_dir = work_dir / "downloaded_reports"
-            reports_dir.mkdir()
-            report_path = reports_dir / "reports.zip"
-            report_path.write_text("ok", encoding="utf-8")
 
             args = type(
                 "Args",
@@ -267,12 +263,13 @@ class RunAgentClientTests(unittest.TestCase):
             )()
 
             with mock.patch.object(self.module, "resolve_access_token", return_value="token"), \
-                 mock.patch.object(self.module, "run_streaming_trading", new=mock.AsyncMock(return_value=(False, str(report_path)))):
+                 mock.patch.object(self.module, "run_streaming_trading", new=mock.AsyncMock(return_value=True)):
                 result = self.module.asyncio.run(self.module.run_inside_env(args))
 
             self.assertEqual(result, 0)
             summary = json.loads((work_dir / "summary.json").read_text(encoding="utf-8"))
             self.assertTrue(summary["success"])
+            self.assertIsNone(summary["report_path"])
             self.assertIsNone(summary["error"])
 
 

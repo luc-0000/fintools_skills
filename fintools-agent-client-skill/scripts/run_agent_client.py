@@ -378,29 +378,18 @@ def build_reexec_args(args, work_dir, auto_created):
     return argv
 
 
-async def run_streaming_deep_research(stock_code, agent_url, token, output_dir):
+async def run_streaming_deep_research(stock_code, agent_url, token):
     from agents_client.streaming.dr_agent_client_stream import run_dr_agent
-    from agents_client.utils import ReportDownloader
 
     success = await run_dr_agent(stock_code, agent_url, token)
-    downloader = ReportDownloader(agent_url, token)
-    report_path = await downloader.download_zip(output_dir=output_dir)
-    return success, report_path
+    return success
 
 
-async def run_streaming_trading(stock_code, agent_url, token, output_dir):
+async def run_streaming_trading(stock_code, agent_url, token):
     from agents_client.streaming.trading_agent_client_stream import run_trading_agent
-    from agents_client.utils import ReportDownloader, normalize_agent_base_url
 
     success = await run_trading_agent(stock_code, agent_url, token)
-    downloader = ReportDownloader(
-        normalize_agent_base_url(agent_url),
-        token,
-        reports_path="reports",
-        reports_zip_path="reports/zip",
-    )
-    report_path = await downloader.download_zip(output_dir=output_dir)
-    return success, report_path
+    return success
 
 
 async def run_polling_trading(stock_code, agent_url, token, task_id):
@@ -462,10 +451,10 @@ async def run_inside_env(args):
             announce_status("当前日志文件: {0}".format(run_log))
             if args.mode == "streaming" and args.agent_type == "deep_research":
                 announce_status("正在启动 Deep Research Agent（streaming）")
-                success, report_path = await run_streaming_deep_research(args.stock_code, args.agent_url, token, str(reports_dir))
+                success = await run_streaming_deep_research(args.stock_code, args.agent_url, token)
             elif args.mode == "streaming" and args.agent_type == "trading":
                 announce_status("正在启动 Trading Agent（streaming）")
-                success, report_path = await run_streaming_trading(args.stock_code, args.agent_url, token, str(reports_dir))
+                success = await run_streaming_trading(args.stock_code, args.agent_url, token)
             elif args.mode == "polling" and args.agent_type == "trading":
                 announce_status("正在启动 Trading Agent（polling）")
                 result = await run_polling_trading(args.stock_code, args.agent_url, token, args.task_id)
@@ -485,7 +474,7 @@ async def run_inside_env(args):
             sys.stderr = original_stderr
 
     if args.mode == "streaming":
-        success = error is None and report_path is not None and Path(report_path).exists()
+        success = error is None and bool(success)
 
     summary = {
         "agent_type": args.agent_type,
