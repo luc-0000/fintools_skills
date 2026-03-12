@@ -223,7 +223,9 @@ async def run_stock_agent_client(
         print(f"  错误: {result['error']}")
 
     if result.get("status") == "completed":
-        await print_report_download_result(client, report_output_dir)
+        downloaded_file = await print_report_download_result(client, report_output_dir)
+        if downloaded_file:
+            result["downloaded_file"] = downloaded_file
 
     return result
 
@@ -253,7 +255,9 @@ async def recover_task(client: DatabaseAgentClient, task_id: str) -> dict[str, A
     return await client.wait_for_task(task_id)
 
 
-async def print_report_download_result(client: StockAgentClientDB, report_output_dir: str | None = None) -> None:
+async def print_report_download_result(
+    client: StockAgentClientDB, report_output_dir: str | None = None
+) -> str | None:
     print("\n[Reports] Downloading reports...")
     try:
         download_result = await client.download_reports_zip(report_output_dir)
@@ -265,9 +269,11 @@ async def print_report_download_result(client: StockAgentClientDB, report_output
             print("[Reports] No task found. Please submit a task first.")
         else:
             print(f"[Reports] Download failed: {error_msg}")
-        return
+        return None
 
     if download_result:
         print(f"[Reports] Downloaded to: {download_result}")
+        return download_result
     else:
         print("[Reports] No reports available or download failed")
+        return None

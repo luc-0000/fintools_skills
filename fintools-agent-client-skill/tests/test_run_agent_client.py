@@ -16,6 +16,9 @@ MODULE_PATH = (
 STREAM_PROBE_PATH = (
     Path(__file__).resolve().parents[1] / "scripts" / "stream_probe.py"
 )
+DB_CLIENT_PATH = (
+    Path(__file__).resolve().parents[1] / "agents_client" / "db_polling" / "db_client.py"
+)
 
 
 def load_module():
@@ -34,11 +37,23 @@ def load_stream_probe_module():
     return module
 
 
+def load_db_client_module():
+    skill_root = DB_CLIENT_PATH.parents[2]
+    if str(skill_root) not in sys.path:
+        sys.path.insert(0, str(skill_root))
+    spec = importlib.util.spec_from_file_location("db_client", DB_CLIENT_PATH)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
+
+
 class RunAgentClientTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.module = load_module()
         cls.stream_probe = load_stream_probe_module()
+        cls.db_client = load_db_client_module()
 
     def test_normalize_mode_accepts_streaming(self):
         self.assertEqual(self.module.normalize_mode("streaming"), "streaming")
@@ -272,6 +287,42 @@ class RunAgentClientTests(unittest.TestCase):
             self.assertIsNone(summary["report_path"])
             self.assertIsNone(summary["error"])
 
+    def test_run_inside_env_records_streaming_report_path_from_run_directory(self):
+        with tempfile.TemporaryDirectory(prefix="fintools-agent-client-run-") as tmpdir:
+            work_dir = Path(tmpdir)
+            reports_dir = work_dir / "downloaded_reports"
+
+            args = type(
+                "Args",
+                (),
+                {
+                    "agent_type": "trading",
+                    "mode": "streaming",
+                    "stock_code": "600519",
+                    "agent_url": "http://example.com/a2a/",
+                    "access_token": None,
+                    "work_dir": str(work_dir),
+                    "task_id": None,
+                    "cleanup": False,
+                    "_in_env": True,
+                    "_work_dir_auto_created": False,
+                },
+            )()
+
+            async def fake_run_streaming(*_args, **_kwargs):
+                reports_dir.mkdir(parents=True, exist_ok=True)
+                report_path = reports_dir / "report.zip"
+                report_path.write_text("zip-placeholder", encoding="utf-8")
+                return True
+
+            with mock.patch.object(self.module, "resolve_access_token", return_value="token"), \
+                 mock.patch.object(self.module, "run_streaming_trading", new=mock.AsyncMock(side_effect=fake_run_streaming)):
+                result = self.module.asyncio.run(self.module.run_inside_env(args))
+
+            self.assertEqual(result, 0)
+            summary = json.loads((work_dir / "summary.json").read_text(encoding="utf-8"))
+            self.assertEqual(Path(summary["report_path"]).resolve(), (reports_dir / "report.zip").resolve())
+
     def test_run_inside_env_uses_deep_research_polling_client(self):
         with tempfile.TemporaryDirectory(prefix="fintools-agent-client-run-") as tmpdir:
             work_dir = Path(tmpdir)
@@ -349,6 +400,30 @@ class RunAgentClientTests(unittest.TestCase):
                 Path(mock_run_polling_trading.await_args.kwargs["report_output_dir"]).resolve(),
                 (work_dir / "downloaded_reports").resolve(),
             )
+
+    def test_run_stock_agent_client_records_downloaded_file(self):
+        client = mock.Mock()
+        client.download_reports_zip = mock.AsyncMock(return_value="/tmp/example/report.zip")
+
+        with mock.patch.object(
+            self.db_client,
+            "recover_task",
+            new=mock.AsyncMock(return_value={"status": "completed"}),
+        ):
+            result = self.module.asyncio.run(
+                self.db_client.run_stock_agent_client(
+                    lambda **kwargs: client,
+                    "Trading Agent Client",
+                    "http://example.com/a2a/",
+                    "600519",
+                    "token",
+                    task_id="task-789",
+                    report_output_dir="/tmp/example",
+                )
+            )
+
+        self.assertEqual(result["downloaded_file"], "/tmp/example/report.zip")
+        client.download_reports_zip.assert_awaited_once_with("/tmp/example")
 
 
 if __name__ == "__main__":

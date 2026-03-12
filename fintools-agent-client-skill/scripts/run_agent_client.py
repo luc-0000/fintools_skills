@@ -303,6 +303,19 @@ def log_file_path(work_dir):
     return Path(work_dir) / LOG_NAME
 
 
+def find_downloaded_report(reports_dir):
+    reports_path = Path(reports_dir)
+    if not reports_path.exists():
+        return None
+
+    files = [path for path in reports_path.iterdir() if path.is_file()]
+    if not files:
+        return None
+
+    latest_file = max(files, key=lambda path: path.stat().st_mtime)
+    return str(latest_file.resolve())
+
+
 class TeeStream:
     def __init__(self, *streams):
         self.streams = streams
@@ -471,9 +484,13 @@ async def run_inside_env(args):
             if args.mode == "streaming" and args.agent_type == "deep_research":
                 announce_status("正在启动 Deep Research Agent（streaming）")
                 success = await run_streaming_deep_research(args.stock_code, args.agent_url, token)
+                if success:
+                    report_path = find_downloaded_report(reports_dir)
             elif args.mode == "streaming" and args.agent_type == "trading":
                 announce_status("正在启动 Trading Agent（streaming）")
                 success = await run_streaming_trading(args.stock_code, args.agent_url, token)
+                if success:
+                    report_path = find_downloaded_report(reports_dir)
             elif args.mode == "polling" and args.agent_type == "trading":
                 announce_status("正在启动 Trading Agent（polling）")
                 result = await run_polling_trading(
