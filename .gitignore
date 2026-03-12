@@ -1,0 +1,11 @@
+.idea/
+*.pyc
+__pycache__/
+.DS_Store
+
+# Reports
+reports/
+**/reports/
+**/downloaded_reports/
+/downloaded_reports/
+.env
