@@ -392,17 +392,29 @@ async def run_streaming_trading(stock_code, agent_url, token):
     return success
 
 
-async def run_polling_trading(stock_code, agent_url, token, task_id):
+async def run_polling_trading(stock_code, agent_url, token, task_id, report_output_dir=None):
     from agents_client.db_polling.trading_agent_client_db import main as run_main
 
-    result = await run_main(agent_url, stock_code, token, task_id=task_id)
+    result = await run_main(
+        agent_url,
+        stock_code,
+        token,
+        task_id=task_id,
+        report_output_dir=report_output_dir,
+    )
     return result
 
 
-async def run_polling_deep_research(stock_code, agent_url, token, task_id):
+async def run_polling_deep_research(stock_code, agent_url, token, task_id, report_output_dir=None):
     from agents_client.db_polling.dr_agent_client_db import main as run_main
 
-    result = await run_main(agent_url, stock_code, token, task_id=task_id)
+    result = await run_main(
+        agent_url,
+        stock_code,
+        token,
+        task_id=task_id,
+        report_output_dir=report_output_dir,
+    )
     return result
 
 
@@ -464,13 +476,25 @@ async def run_inside_env(args):
                 success = await run_streaming_trading(args.stock_code, args.agent_url, token)
             elif args.mode == "polling" and args.agent_type == "trading":
                 announce_status("正在启动 Trading Agent（polling）")
-                result = await run_polling_trading(args.stock_code, args.agent_url, token, args.task_id)
+                result = await run_polling_trading(
+                    args.stock_code,
+                    args.agent_url,
+                    token,
+                    args.task_id,
+                    report_output_dir=str(reports_dir),
+                )
                 success = result.get("status") == "completed"
                 report_path = result.get("downloaded_file")
                 error = result.get("error")
             elif args.mode == "polling" and args.agent_type == "deep_research":
                 announce_status("正在启动 Deep Research Agent（polling）")
-                result = await run_polling_deep_research(args.stock_code, args.agent_url, token, args.task_id)
+                result = await run_polling_deep_research(
+                    args.stock_code,
+                    args.agent_url,
+                    token,
+                    args.task_id,
+                    report_output_dir=str(reports_dir),
+                )
                 success = result.get("status") == "completed"
                 report_path = result.get("downloaded_file")
                 error = result.get("error")

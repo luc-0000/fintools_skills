@@ -309,6 +309,47 @@ class RunAgentClientTests(unittest.TestCase):
             self.assertEqual(summary["report_path"], polling_result["downloaded_file"])
             self.assertIsNone(summary["error"])
 
+    def test_run_inside_env_passes_run_reports_dir_to_polling_client(self):
+        with tempfile.TemporaryDirectory(prefix="fintools-agent-client-run-") as tmpdir:
+            work_dir = Path(tmpdir)
+
+            args = type(
+                "Args",
+                (),
+                {
+                    "agent_type": "trading",
+                    "mode": "polling",
+                    "stock_code": "600519",
+                    "agent_url": "http://example.com/a2a/",
+                    "access_token": None,
+                    "work_dir": str(work_dir),
+                    "task_id": "task-456",
+                    "cleanup": False,
+                    "_in_env": True,
+                    "_work_dir_auto_created": False,
+                },
+            )()
+
+            polling_result = {
+                "status": "completed",
+                "downloaded_file": str(work_dir / "downloaded_reports" / "report.zip"),
+                "error": None,
+            }
+
+            with mock.patch.object(self.module, "resolve_access_token", return_value="token"), \
+                 mock.patch.object(
+                     self.module,
+                     "run_polling_trading",
+                     new=mock.AsyncMock(return_value=polling_result),
+                 ) as mock_run_polling_trading:
+                result = self.module.asyncio.run(self.module.run_inside_env(args))
+
+            self.assertEqual(result, 0)
+            self.assertEqual(
+                Path(mock_run_polling_trading.await_args.kwargs["report_output_dir"]).resolve(),
+                (work_dir / "downloaded_reports").resolve(),
+            )
+
 
 if __name__ == "__main__":
     unittest.main()
