@@ -399,6 +399,13 @@ async def run_polling_trading(stock_code, agent_url, token, task_id):
     return result
 
 
+async def run_polling_deep_research(stock_code, agent_url, token, task_id):
+    from agents_client.db_polling.dr_agent_client_db import main as run_main
+
+    result = await run_main(agent_url, stock_code, token, task_id=task_id)
+    return result
+
+
 def maybe_cleanup(work_dir, cleanup_requested):
     if not cleanup_requested:
         return False
@@ -461,8 +468,18 @@ async def run_inside_env(args):
                 success = result.get("status") == "completed"
                 report_path = result.get("downloaded_file")
                 error = result.get("error")
+            elif args.mode == "polling" and args.agent_type == "deep_research":
+                announce_status("正在启动 Deep Research Agent（polling）")
+                result = await run_polling_deep_research(args.stock_code, args.agent_url, token, args.task_id)
+                success = result.get("status") == "completed"
+                report_path = result.get("downloaded_file")
+                error = result.get("error")
             else:
-                fail("The repository does not implement polling for deep_research.")
+                fail(
+                    "Unsupported agent/mode combination: {0} + {1}".format(
+                        args.agent_type, args.mode
+                    )
+                )
         except SystemExit:
             raise
         except Exception as exc:

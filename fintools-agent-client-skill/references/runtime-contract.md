@@ -53,9 +53,6 @@ This skill wraps the repository's existing client modules so another agent does 
 - `deep_research + streaming`
 - `trading + streaming`
 - `trading + polling`
-
-Unsupported:
-
 - `deep_research + polling`
 
 Do not silently substitute another mode for an unsupported combination.

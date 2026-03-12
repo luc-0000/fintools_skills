@@ -62,7 +62,7 @@ Current repository support:
 - `deep_research + streaming`: supported
 - `trading + streaming`: supported
 - `trading + polling`: supported
-- `deep_research + polling`: not implemented in this repository; say so clearly and stop instead of inventing a fallback
+- `deep_research + polling`: supported
 
 ## Execution Workflow
 
@@ -165,5 +165,16 @@ python3 fintools-agent-client/scripts/run_agent_client.py \
   --mode polling \
   --stock-code 600519 \
   --agent-url http://127.0.0.1:8000/api/v1/agents/69/a2a/ \
+  --work-dir /tmp/my-agent-runs
+```
+
+Deep Research, polling mode:
+
+```bash
+python3 fintools-agent-client/scripts/run_agent_client.py \
+  --agent-type deep_research \
+  --mode polling \
+  --stock-code 600519 \
+  --agent-url http://127.0.0.1:8000/api/v1/agents/82/a2a/ \
   --work-dir /tmp/my-agent-runs
 ```

@@ -73,6 +73,7 @@
 - 面向用户时，不直接使用 `db polling` 作为主名称
 - `streaming` 作为对外参数名，用户说明使用“实时模式”
 - `polling` 对外名称使用“轮询模式”
+- 当前仓库支持以下组合：`deep_research + streaming`、`deep_research + polling`、`trading + streaming`、`trading + polling`
 - 如需展示技术说明，可在文档中补充：
   - 实时模式：服务持续推送中间结果
   - 轮询模式：不是一直保持连接，而是隔一段时间查一次任务进度，适合长时间任务
