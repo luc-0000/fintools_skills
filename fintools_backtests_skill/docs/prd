@@ -1,0 +1,13 @@
+把/Users/lu/development/fintools_all/fintools_backtests这个文件夹下的项目，转化成一个openclaw能够调用，并展现远程trading agents回测的一个skill
+环境安装参考/Users/lu/development/fintools_all/fintools-agent-client-skill里的方法
+
+只要remote trading agent的回测部分，不要  local agent的回测。
+
+让用户指定工作目录，因为后续每天都要跑，并且要把跑的结果放到数据库里，
+如果用户指定了工作目录，就把这个工作目录记录到skill的config文件里，后面用户要换工作地址，改config就行了
+
+数据库提供两种模式吧，sqlite或者mysql, 第一次使用的时候让用户选，后续在config文件里可配置
+最终我想要的效果是这个skill可以调用远程的a2a trading agents server, 并把结果保存下来，做成backtests展示给用户
+其实整个流程就是，open claw去通过fintools-agent-client-skill 去拉远程trading agents, 得到结果后存入数据库
+然后再通过
+
