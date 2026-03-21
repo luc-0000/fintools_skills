@@ -1,0 +1,2 @@
+现在这个目录fintools_skills, 感觉更像一个plugin, 里面的几个skill是有互相依赖关系的，而且有一些共用的东西，比如access token, 数据库，，fintools-
+  client-backtests-skill依赖fintools-client-skill去远程拉agent, 并把结果存到数据库里，fintools-client-backtests-skill从fintools-client-skill 存储的数据库里取数据，做backtests. 这种情况下，我感觉fintools_skills更像一个plugin, 

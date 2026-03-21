@@ -1,0 +1,1 @@
+这个skill需要读取fintools-client-skill/.runtime/database下的数据，然后
