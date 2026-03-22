@@ -112,19 +112,26 @@
 
 这个映射发生在同步过程中，在写入 `backtests.agent_trading` 之前完成。
 
-## 去重与“当天最后一条”规则
+## 去重与“每个 agent 当天最后一条”规则
 
 `trading_agent.db` 中，同一天可能会有多次运行结果。
 
-但 `backtests.agent_trading` 的目标是每天只保留一条有效记录。
+但 `backtests.agent_trading` 的目标不是把所有 agent 混在一起只保留一条，而是：
+
+- 每个 agent
+- 每只股票
+- 每个交易日
+
+各自只保留一条有效记录。
 
 因此，同步逻辑必须满足以下规则：
 
-- 对于 `trading_agent.db` 中同一天的重复运行结果，只取当天最后一条记录进行转换并写入 `backtests.agent_trading`
+- 对于同一个 agent 在同一只股票、同一个交易日内的重复运行结果，只取当天最后一条记录进行转换并写入 `backtests.agent_trading`
 
 换句话说：
 
-- 如果上游 agent 在同一天运行了多次，`backtests` 在同步时必须忽略当天较早的记录，只使用当天最后一次运行结果
+- 如果同一个上游 agent 在同一天对同一只股票运行了多次，`backtests` 在同步时必须忽略当天较早的记录，只使用该 agent 当天最后一次运行结果
+- 如果是不同 agent，即使它们在同一天对同一只股票都产生了结果，也必须分别保留各自当天最后一条
 
 ## 数据归属边界
 
@@ -147,6 +154,62 @@
 
 这个策略保证当前 skill 可以直接运行，同时不影响后续继续把归属逻辑配置化。
 
+## Rule 自动补全要求
+
+`trading_agent.db` 里的数据来源于上游 agent。
+
+因此，在把数据同步到 `backtests.agent_trading` 之前，还必须保证对应 agent 在 `backtests.rule` 中已经存在。
+
+如果上游 `trading_agent` 对应的 agent 在 `rules` 里不存在，则系统需要先自动补一条 `remote_agent` 规则，再继续同步交易记录。
+
+### 自动补全的 rule 类型
+
+自动创建的 rule 必须是：
+
+- `type = remote_agent`
+
+### 自动补全的 rule 字段
+
+自动创建 rule 时，至少要补齐以下信息：
+
+- `id`
+- `name`
+- `description`
+- `info`
+- `agent_id`
+
+其中：
+
+- `id` 必须与上游 `agent_id` 对应
+- `info` 用来保存该 agent 对应的远程访问地址
+- `agent_id` 用来保存上游 agent 的唯一标识
+
+也就是说：
+
+- 如果上游 agent 的 `agent_id = 105`
+- 那么自动补建出来的 `backtests.rule.id` 也应该是 `105`
+
+不应该再额外分配新的本地自增 rule id。
+
+### 自动补全触发时机
+
+这一步不是人工维护，而是 `backtests` 在每次被唤醒并执行同步前，都需要自动检查：
+
+1. 上游 `trading_agent.db` 中涉及哪些 agent
+2. 这些 agent 是否已经存在于 `backtests.rule`
+3. 对缺失的 agent 自动补建 `remote_agent` rule
+4. 再把对应交易结果同步到 `agent_trading`
+
+### 自动补全目标
+
+最终效果应该是：
+
+- `trading_agent.db` 中出现的新 agent，不需要人工先去 Rules 页面建 rule
+- `backtests` 被唤醒时可以自动把缺失 rule 补齐
+- 补齐后的 rule 具备展示和后续回测所需的最少元信息
+- 自动补齐时，`rule.id` 与上游 `agent_id` 一一对应
+- 随后的 `agent_trading` 同步可以正确归属到对应的 `rule_id`
+
 ## 目标实现流程
 
 目标稳定行为应该是：
@@ -154,12 +217,14 @@
 1. 远程 agent 通过 `agentclient` 运行
 2. 原始结果写入 `trading_agent.db`
 3. `backtests` 被唤醒
-4. `backtests` 从 `trading_agent.db` 执行同步
-5. 同一天重复结果按“当天最后一条”规则折叠
-6. `buy` 映射为 `indicating`
-7. 其他结果映射为 `not_indicating`
-8. 归一化后的记录追加写入 `backtests.agent_trading`
-9. `backtests` 基于自己的数据库进行展示
+4. `backtests` 先检查上游 agent 是否已经存在对应的 `remote_agent` rule
+5. 缺失的 rule 自动补齐，并写入 agent 地址、名称、说明、agent_id 等信息
+6. `backtests` 再从 `trading_agent.db` 执行同步
+7. 同一个 agent 的同日重复结果按“每个 agent 当天最后一条”规则折叠
+8. `buy` 映射为 `indicating`
+9. 其他结果映射为 `not_indicating`
+10. 归一化后的记录追加写入 `backtests.agent_trading`
+11. `backtests` 基于自己的数据库进行展示
 
 ## 验收要求
 
@@ -169,8 +234,12 @@
 - 默认后端是 SQLite
 - SQLite 和 MySQL 配置在 `config.json` 的 `database` 下分开存放
 - 切换到 MySQL 时只需要改配置，不需要改业务代码
+- 如果上游出现新的 agent，而 `rules` 中不存在对应项，系统会自动补齐 `remote_agent` rule
+- 自动补齐的 rule 会包含 `id`、远程地址、`name`、`description`、`info`、`agent_id` 等必要字段
+- 自动补齐时，`rule.id` 必须与上游 `agent_id` 对应
 - `backtests` 在每次唤醒/初始化/展示前都会执行 `trading_agent.db` 同步
 - 同步结果写入 `backtests.agent_trading`
 - `buy -> indicating` 的转换规则被严格执行
 - 非 `buy` 结果统一映射为 `not_indicating`
-- 对于同一天多次运行，只导入当天最后一条记录进入 `agent_trading`
+- 对于同一个 agent 在同一天的多次运行，只导入该 agent 当天最后一条记录进入 `agent_trading`
+- 不同 agent 在同一天对同一只股票的结果需要分别保留

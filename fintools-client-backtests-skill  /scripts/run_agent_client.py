@@ -11,6 +11,7 @@ import shutil
 import subprocess
 import sys
 from datetime import datetime
+import re
 
 
 SKILL_NAME = "fintools-agent-client"
@@ -227,6 +228,21 @@ def safe_name_fragment(value):
             allowed.append("-")
     fragment = "".join(allowed).strip("-")
     return fragment or "unknown"
+
+
+def extract_agent_id(agent_url):
+    match = re.search(r"/agents/([^/]+)/a2a/?$", str(agent_url or "").strip())
+    if match:
+        return match.group(1)
+    return None
+
+
+def default_agent_name(agent_type, agent_id):
+    if agent_type and agent_id:
+        return "{0}_agent_{1}".format(agent_type, agent_id)
+    if agent_id:
+        return "agent_{0}".format(agent_id)
+    return None
 
 
 def create_run_dir(parent_dir, agent_type, stock_code, mode):
@@ -544,6 +560,8 @@ async def run_inside_env(args):
         "mode": args.mode,
         "stock_code": args.stock_code,
         "agent_url": args.agent_url,
+        "agent_id": extract_agent_id(args.agent_url),
+        "agent_name": default_agent_name(args.agent_type, extract_agent_id(args.agent_url)),
         "runtime_type": os.environ.get("FINTOOLS_RUNTIME_TYPE", "unknown"),
         "runtime_detail": os.environ.get("FINTOOLS_RUNTIME_DETAIL", "unknown"),
         "runtime_env_dir": os.environ.get("FINTOOLS_RUNTIME_ENV_DIR", "unknown"),
