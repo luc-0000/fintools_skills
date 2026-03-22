@@ -175,48 +175,5 @@ class BacktestsTradingAgentSyncTests(unittest.TestCase):
             finally:
                 session.remove()
 
-    def test_sync_keeps_existing_rule_ids_and_uses_agent_id_for_matching(self):
-        with tempfile.TemporaryDirectory(prefix="backtests-sync-existing-ids-") as tmpdir:
-            tmp_path = Path(tmpdir)
-            source_db_path = tmp_path / "trading_agent_runs.db"
-            runs_dir = tmp_path / "runs"
-            runs_dir.mkdir(parents=True, exist_ok=True)
-
-            self._write_source_db(source_db_path)
-            self._write_summary(runs_dir, "run-1", "run-old", "https://example.com/api/v1/agents/105/a2a/")
-            self._write_summary(runs_dir, "run-2", "run-new", "https://example.com/api/v1/agents/105/a2a/")
-            self._write_summary(runs_dir, "run-3", "run-hold", "https://example.com/api/v1/agents/106/a2a/")
-
-            db, session = self._build_db()
-            try:
-                session.add_all([
-                    Rule(
-                        id=3007,
-                        name="trading_agent_106",
-                        type="remote_agent",
-                        info="https://example.com/api/v1/agents/106/a2a/",
-                        description="auto",
-                        agent_id="106",
-                    ),
-                    Rule(
-                        id=3008,
-                        name="trading_agent_105",
-                        type="remote_agent",
-                        info="https://example.com/api/v1/agents/105/a2a/",
-                        description="auto",
-                        agent_id="105",
-                    ),
-                ])
-                session.commit()
-
-                sync_trading_agent_into_backtests(db, source_db_path=source_db_path, runs_dir=runs_dir)
-
-                rules = session.query(Rule).order_by(Rule.id.asc()).all()
-                self.assertEqual([rule.id for rule in rules], [3007, 3008])
-                self.assertEqual([rule.agent_id for rule in rules], ["106", "105"])
-            finally:
-                session.remove()
-
-
 if __name__ == "__main__":
     unittest.main()

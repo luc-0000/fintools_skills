@@ -209,6 +209,40 @@
 - 自动补齐时，通过唯一的 `agent_id` 把上游 agent 和 `backtests.rule` 建立一一对应
 - 随后的 `agent_trading` 同步可以正确归属到对应的 `rule_id`
 
+## Pool 处理原则
+
+`trading_agent_runs.db` 同步到 `backtests` 时，不应该自动创建任何 pool，也不应该自动修改 `rule_pool`、`pool`、`pool_stock`。
+
+也就是说：
+
+- `backtests` 唤醒时只负责补齐缺失的 `remote_agent rule`
+- `backtests` 唤醒时只负责把交易结果同步到 `agent_trading`
+- 不允许在这条同步链路里自动补股票池
+
+### agent 尚未设置 pool 时的正确处理方式
+
+如果用户还没有给某个 agent 设置股票池，这不应阻塞：
+
+- `agentclient` 调用远程 agent
+- `trading_agent_runs.db` 写入原始结果
+- `backtests` / `simulator` 基于已有信号继续运行
+
+正确逻辑是：
+
+1. 在用户主动调用该 agent 时，系统检查这个 agent 是否已经设置 pool
+2. 如果没有设置 pool，则询问用户是否要为这个 agent 设定股票池
+3. 只有在用户确认后，才进入股票池配置流程
+4. 如果用户不设置 pool，系统也不能自动代替用户创建任何临时 pool
+
+### Pool 处理目标
+
+最终效果应该是：
+
+- pool 由用户显式配置，而不是由同步程序隐式创建
+- `backtests` 同步链路和 pool 管理链路分离
+- agent 没有固定股票池时，`simulator` 仍然可以运行
+- `backtests` 的 `agent_trading` 同步不依赖 pool 是否存在
+
 ## 目标实现流程
 
 目标稳定行为应该是：
@@ -224,6 +258,7 @@
 9. 其他结果映射为 `not_indicating`
 10. 归一化后的记录追加写入 `backtests.agent_trading`
 11. `backtests` 基于自己的数据库进行展示
+12. 如果用户后续主动调用某个尚未设置 pool 的 agent，系统单独询问是否配置股票池
 
 ## 验收要求
 
@@ -242,3 +277,6 @@
 - 非 `buy` 结果统一映射为 `not_indicating`
 - 对于同一个 agent 在同一天的多次运行，只导入该 agent 当天最后一条记录进入 `agent_trading`
 - 不同 agent 在同一天对同一只股票的结果需要分别保留
+- `backtests` 唤醒时不会自动创建任何 pool，也不会自动修改 agent 的 pool 关联
+- 如果 agent 尚未设置 pool，应该在用户调用该 agent 时询问是否配置股票池
+- agent 没有 pool 时，不影响 `simulator` 和 `agent_trading` 的同步链路
