@@ -20,7 +20,7 @@
 
 `agentclient` 负责调用远程 agent，并把原始执行结果写入：
 
-- `.runtime/database/trading_agent.db`
+- `.runtime/database/trading_agent_runs.db`
 
 这个数据库是上游 agent 结果的运行时存储。
 
@@ -30,7 +30,7 @@
 
 每次 `backtests` 被唤醒、初始化，或者被要求展示数据时，都必须先把：
 
-- `.runtime/database/trading_agent.db`
+- `.runtime/database/trading_agent_runs.db`
 
 里的数据同步到 `backtests` 自己数据库中的：
 
@@ -97,7 +97,7 @@
 
 这一步同步必须完成以下事情：
 
-1. 从 `.runtime/database/trading_agent.db` 读取数据
+1. 从 `.runtime/database/trading_agent_runs.db` 读取数据
 2. 把数据转换成 `backtests` 需要的格式
 3. 将转换后的结果追加写入 `backtests` 数据库的 `agent_trading` 表
 
@@ -105,7 +105,7 @@
 
 ## 数据转换规则
 
-从 `trading_agent.db` 转换到 `backtests.agent_trading` 时，交易结果映射规则必须是：
+从 `trading_agent_runs.db` 转换到 `backtests.agent_trading` 时，交易结果映射规则必须是：
 
 - `buy` 映射为 `indicating`
 - 其他任何结果一律映射为 `not_indicating`
@@ -114,7 +114,7 @@
 
 ## 去重与“每个 agent 当天最后一条”规则
 
-`trading_agent.db` 中，同一天可能会有多次运行结果。
+`trading_agent_runs.db` 中，同一天可能会有多次运行结果。
 
 但 `backtests.agent_trading` 的目标不是把所有 agent 混在一起只保留一条，而是：
 
@@ -137,7 +137,7 @@
 
 数据职责划分应该是：
 
-- `trading_agent.db` 保存上游 agent 的原始运行结果
+- `trading_agent_runs.db` 保存上游 agent 的原始运行结果
 - `backtests.agent_trading` 保存面向回测展示的、已经归一化后的日级信号记录
 
 因此，从 `backtests` 的视角看，`agent_trading` 是一个派生表，它的内容应该在每次 `backtests` 唤醒时，通过同步上游运行时数据库来更新。
@@ -148,7 +148,7 @@
 
 当前实现约定是：
 
-- 将 `trading_agent.db` 同步结果归属到 `backtests` 中的 `remote_agent` 规则
+- 将 `trading_agent_runs.db` 同步结果归属到 `backtests` 中的 `remote_agent` 规则
 - 如果当前只有一条 `remote_agent` 规则，则直接写入该规则
 - 如果当前存在多条 `remote_agent` 规则，则默认使用 `id` 最小的那一条，并记录告警日志
 
@@ -156,7 +156,7 @@
 
 ## Rule 自动补全要求
 
-`trading_agent.db` 里的数据来源于上游 agent。
+`trading_agent_runs.db` 里的数据来源于上游 agent。
 
 因此，在把数据同步到 `backtests.agent_trading` 之前，还必须保证对应 agent 在 `backtests.rule` 中已经存在。
 
@@ -180,22 +180,21 @@
 
 其中：
 
-- `id` 必须与上游 `agent_id` 对应
+- `id` 是 `backtests.rule` 的内部主键
 - `info` 用来保存该 agent 对应的远程访问地址
-- `agent_id` 用来保存上游 agent 的唯一标识
+- `agent_id` 用来保存上游 agent 的唯一标识，并且必须唯一
 
 也就是说：
 
 - 如果上游 agent 的 `agent_id = 105`
-- 那么自动补建出来的 `backtests.rule.id` 也应该是 `105`
-
-不应该再额外分配新的本地自增 rule id。
+- 那么自动补建出来的 `backtests.rule.agent_id` 应该保存 `105`
+- 但 `backtests.rule.id` 仍然保持系统内部自增主键语义
 
 ### 自动补全触发时机
 
 这一步不是人工维护，而是 `backtests` 在每次被唤醒并执行同步前，都需要自动检查：
 
-1. 上游 `trading_agent.db` 中涉及哪些 agent
+1. 上游 `trading_agent_runs.db` 中涉及哪些 agent
 2. 这些 agent 是否已经存在于 `backtests.rule`
 3. 对缺失的 agent 自动补建 `remote_agent` rule
 4. 再把对应交易结果同步到 `agent_trading`
@@ -204,10 +203,10 @@
 
 最终效果应该是：
 
-- `trading_agent.db` 中出现的新 agent，不需要人工先去 Rules 页面建 rule
+- `trading_agent_runs.db` 中出现的新 agent，不需要人工先去 Rules 页面建 rule
 - `backtests` 被唤醒时可以自动把缺失 rule 补齐
 - 补齐后的 rule 具备展示和后续回测所需的最少元信息
-- 自动补齐时，`rule.id` 与上游 `agent_id` 一一对应
+- 自动补齐时，通过唯一的 `agent_id` 把上游 agent 和 `backtests.rule` 建立一一对应
 - 随后的 `agent_trading` 同步可以正确归属到对应的 `rule_id`
 
 ## 目标实现流程
@@ -215,11 +214,11 @@
 目标稳定行为应该是：
 
 1. 远程 agent 通过 `agentclient` 运行
-2. 原始结果写入 `trading_agent.db`
+2. 原始结果写入 `trading_agent_runs.db`
 3. `backtests` 被唤醒
 4. `backtests` 先检查上游 agent 是否已经存在对应的 `remote_agent` rule
 5. 缺失的 rule 自动补齐，并写入 agent 地址、名称、说明、agent_id 等信息
-6. `backtests` 再从 `trading_agent.db` 执行同步
+6. `backtests` 再从 `trading_agent_runs.db` 执行同步
 7. 同一个 agent 的同日重复结果按“每个 agent 当天最后一条”规则折叠
 8. `buy` 映射为 `indicating`
 9. 其他结果映射为 `not_indicating`
@@ -236,8 +235,8 @@
 - 切换到 MySQL 时只需要改配置，不需要改业务代码
 - 如果上游出现新的 agent，而 `rules` 中不存在对应项，系统会自动补齐 `remote_agent` rule
 - 自动补齐的 rule 会包含 `id`、远程地址、`name`、`description`、`info`、`agent_id` 等必要字段
-- 自动补齐时，`rule.id` 必须与上游 `agent_id` 对应
-- `backtests` 在每次唤醒/初始化/展示前都会执行 `trading_agent.db` 同步
+- `rule.id` 保持内部自增，`agent_id` 作为外部 agent 唯一标识
+- `backtests` 在每次唤醒/初始化/展示前都会执行 `trading_agent_runs.db` 同步
 - 同步结果写入 `backtests.agent_trading`
 - `buy -> indicating` 的转换规则被严格执行
 - 非 `buy` 结果统一映射为 `not_indicating`

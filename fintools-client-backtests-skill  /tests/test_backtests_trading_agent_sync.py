@@ -77,7 +77,7 @@ class BacktestsTradingAgentSyncTests(unittest.TestCase):
     def test_sync_auto_creates_rule_and_appends_latest_daily_rows(self):
         with tempfile.TemporaryDirectory(prefix="backtests-sync-") as tmpdir:
             tmp_path = Path(tmpdir)
-            source_db_path = tmp_path / "trading_agent.db"
+            source_db_path = tmp_path / "trading_agent_runs.db"
             runs_dir = tmp_path / "runs"
             runs_dir.mkdir(parents=True, exist_ok=True)
 
@@ -95,7 +95,6 @@ class BacktestsTradingAgentSyncTests(unittest.TestCase):
                 self.assertEqual(result["updated"], 0)
 
                 rules = session.query(Rule).order_by(Rule.agent_id.asc()).all()
-                self.assertEqual([rule.id for rule in rules], [105, 106])
                 self.assertEqual([rule.agent_id for rule in rules], ["105", "106"])
                 self.assertEqual([rule.type for rule in rules], ["remote_agent", "remote_agent"])
                 self.assertEqual(
@@ -111,8 +110,8 @@ class BacktestsTradingAgentSyncTests(unittest.TestCase):
                 self.assertEqual(
                     {(trading.rule_id, trading.stock, trading.trading_type) for trading in tradings},
                     {
-                        (105, "600519", "not_indicating"),
-                        (106, "000001", "not_indicating"),
+                        (rules[0].id, "600519", "not_indicating"),
+                        (rules[1].id, "000001", "not_indicating"),
                     },
                 )
             finally:
@@ -121,7 +120,7 @@ class BacktestsTradingAgentSyncTests(unittest.TestCase):
     def test_source_schema_migration_adds_agent_columns_and_backfills(self):
         with tempfile.TemporaryDirectory(prefix="backtests-source-migration-") as tmpdir:
             tmp_path = Path(tmpdir)
-            source_db_path = tmp_path / "trading_agent.db"
+            source_db_path = tmp_path / "trading_agent_runs.db"
             runs_dir = tmp_path / "runs"
             runs_dir.mkdir(parents=True, exist_ok=True)
 
@@ -146,7 +145,7 @@ class BacktestsTradingAgentSyncTests(unittest.TestCase):
     def test_sync_reuses_existing_rule_by_agent_id(self):
         with tempfile.TemporaryDirectory(prefix="backtests-sync-existing-") as tmpdir:
             tmp_path = Path(tmpdir)
-            source_db_path = tmp_path / "trading_agent.db"
+            source_db_path = tmp_path / "trading_agent_runs.db"
             runs_dir = tmp_path / "runs"
             runs_dir.mkdir(parents=True, exist_ok=True)
 
@@ -176,10 +175,10 @@ class BacktestsTradingAgentSyncTests(unittest.TestCase):
             finally:
                 session.remove()
 
-    def test_sync_realigns_existing_auto_created_rule_ids_to_agent_ids(self):
-        with tempfile.TemporaryDirectory(prefix="backtests-sync-align-") as tmpdir:
+    def test_sync_keeps_existing_rule_ids_and_uses_agent_id_for_matching(self):
+        with tempfile.TemporaryDirectory(prefix="backtests-sync-existing-ids-") as tmpdir:
             tmp_path = Path(tmpdir)
-            source_db_path = tmp_path / "trading_agent.db"
+            source_db_path = tmp_path / "trading_agent_runs.db"
             runs_dir = tmp_path / "runs"
             runs_dir.mkdir(parents=True, exist_ok=True)
 
@@ -208,18 +207,13 @@ class BacktestsTradingAgentSyncTests(unittest.TestCase):
                         agent_id="105",
                     ),
                 ])
-                session.add_all([
-                    AgentTrading(rule_id=3007, stock="000001", trading_date=__import__("datetime").datetime(2026, 3, 21), trading_type="not_indicating"),
-                    AgentTrading(rule_id=3008, stock="600519", trading_date=__import__("datetime").datetime(2026, 3, 21), trading_type="not_indicating"),
-                ])
                 session.commit()
 
                 sync_trading_agent_into_backtests(db, source_db_path=source_db_path, runs_dir=runs_dir)
 
                 rules = session.query(Rule).order_by(Rule.id.asc()).all()
-                self.assertEqual([rule.id for rule in rules], [105, 106])
-                tradings = session.query(AgentTrading).order_by(AgentTrading.rule_id.asc(), AgentTrading.stock.asc()).all()
-                self.assertEqual([trading.rule_id for trading in tradings], [105, 106])
+                self.assertEqual([rule.id for rule in rules], [3007, 3008])
+                self.assertEqual([rule.agent_id for rule in rules], ["106", "105"])
             finally:
                 session.remove()
 
