@@ -243,6 +243,67 @@
 - agent 没有固定股票池时，`simulator` 仍然可以运行
 - `backtests` 的 `agent_trading` 同步不依赖 pool 是否存在
 
+## Backtests 调用 Agent 的复用要求
+
+当 `backtests` 主动去执行 remote agent 时，不允许再维护一套独立的 A2A 调用实现。
+
+也就是说，`backtests` 不应该自己单独处理以下逻辑：
+
+- agent card 获取
+- access token 获取
+- access token 缓存
+- Authorization header 组装
+- trading agent 的底层请求流程
+
+### 必须复用的现有调用链
+
+`backtests` 执行 remote agent 时，必须复用 skill 里已经存在的调用流程，至少包括：
+
+- `scripts/run_agent_client.py` 中现有的 token 解析 / 缓存逻辑
+- `scripts/run_agent_client.py` 中现有的 trading agent 调用入口
+- skill 当前已经在使用的 streaming / polling 调用实现
+
+`backtests` 在这条链路里的职责，只应该是：
+
+- 决定要跑哪些股票
+- 把股票代码和 agent URL 交给现有 skill 调用链
+- 读取调用结果并更新 `agent_trading`
+
+### UI 指定股票范围的执行规则
+
+`backtests` 执行 remote agent 时，股票范围由 UI 操作决定：
+
+- 在 Agents 页面点击 `Run Today` 时，执行当前 agent 所关联 pool 中的全部股票
+- 在 Agents 页面点击某一只股票的 `Run` 时，只执行该股票
+
+也就是说：
+
+- UI 决定“跑哪些股票”
+- skill 现有调用链决定“怎么调 agent”
+
+### Access Token 规则
+
+获取 access token 的方式必须复用 skill 里现有逻辑。
+
+不允许 `backtests` 再自己新增另一套 token 来源或缓存方式。
+
+对于 `backtests` 这条适配链路，token 来源必须遵循以下收敛规则：
+
+- 优先使用显式传入的 token
+- 如果没有显式传入，则只读取 skill 运行目录下已经缓存好的 `.runtime/runs/.fintools_access_token`
+- 不允许 `backtests` 为了执行 agent 再去读取 `.env`
+- 不允许 `backtests` 再从环境变量回退读取 `FINTOOLS_ACCESS_TOKEN`
+- 如果缓存文件里仍然是示例值或占位 token，必须直接报明确错误，而不是继续请求远端后再得到 `401`
+
+### 适配边界
+
+为了把 `backtests` 接到 skill 现有调用链上，可以新增适配层。
+
+但是：
+
+- 不允许修改 `agents_client/` 目录下的现有实现
+- 如果需要适配，适配代码必须放在 `backtests` 自己的调用层或单独 adapter 层
+
 ## 目标实现流程
 
 目标稳定行为应该是：
@@ -259,6 +320,7 @@
 10. 归一化后的记录追加写入 `backtests.agent_trading`
 11. `backtests` 基于自己的数据库进行展示
 12. 如果用户后续主动调用某个尚未设置 pool 的 agent，系统单独询问是否配置股票池
+13. 如果用户在 `backtests` 中主动运行 agent，则由 UI 指定股票范围，并复用 skill 现有 agent 调用链执行
 
 ## 验收要求
 
@@ -280,3 +342,8 @@
 - `backtests` 唤醒时不会自动创建任何 pool，也不会自动修改 agent 的 pool 关联
 - 如果 agent 尚未设置 pool，应该在用户调用该 agent 时询问是否配置股票池
 - agent 没有 pool 时，不影响 `simulator` 和 `agent_trading` 的同步链路
+- `backtests` 主动执行 remote agent 时，必须复用 skill 现有调用链，而不是维护独立的 A2A 调用实现
+- `backtests` 只负责根据 UI 决定股票范围：`Run Today` 跑 pool 全量，单股 `Run` 只跑该股票
+- 获取 access token 的方式必须复用 skill 现有逻辑
+- `backtests` 适配层只允许读取显式传入 token 或 skill 已缓存的 `.runtime/runs/.fintools_access_token`，不能回退到 `.env` 或环境变量
+- 不允许修改 `agents_client/` 目录下的现有实现；如需接入，只能新增适配层
