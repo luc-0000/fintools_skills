@@ -1,5 +1,6 @@
 import asyncio
 import io
+import os
 import sys
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
@@ -13,6 +14,7 @@ from scripts.run_agent_client import (
     default_runs_parent_dir,
     load_cached_access_token,
     run_streaming_trading,
+    save_access_token,
     token_file_path,
 )
 
@@ -33,25 +35,37 @@ def _is_placeholder_token(token: str | None) -> bool:
 
 
 def _resolve_token(access_token: str | None = None) -> str:
+    parent_dir = default_runs_parent_dir()
+    token_path = token_file_path(parent_dir)
+
     if access_token:
         if _is_placeholder_token(access_token):
             raise RuntimeError("Invalid FINTOOLS access token: explicit placeholder token was provided.")
+        save_access_token(parent_dir, access_token)
         return access_token
 
-    parent_dir = default_runs_parent_dir()
     token = load_cached_access_token(parent_dir)
-    token_path = token_file_path(parent_dir)
-    if not token:
-        raise RuntimeError(
-            "Missing FINTOOLS access token cache. Run the skill client once to create {0}.".format(token_path)
-        )
-    if _is_placeholder_token(token):
-        raise RuntimeError(
-            "Invalid FINTOOLS access token cache at {0}. Replace the placeholder token with a real cached token.".format(
-                token_path
+    if token:
+        if _is_placeholder_token(token):
+            raise RuntimeError(
+                "Invalid FINTOOLS access token cache at {0}. Replace the placeholder token with a real cached token.".format(
+                    token_path
+                )
             )
+        return token
+
+    env_token = os.environ.get("FINTOOLS_ACCESS_TOKEN")
+    if env_token:
+        if _is_placeholder_token(env_token):
+            raise RuntimeError("Invalid FINTOOLS access token: environment variable contains a placeholder token.")
+        save_access_token(parent_dir, env_token)
+        return env_token
+
+    raise RuntimeError(
+        "Missing FINTOOLS access token. Provide an explicit token, cache it under {0}, or set FINTOOLS_ACCESS_TOKEN.".format(
+            token_path
         )
-    return token
+    )
 
 
 class _StreamingQueueWriter:

@@ -51,6 +51,22 @@ Preferred surfaces, in order:
 
 Avoid direct SQLite or MySQL writes unless the task is explicit low-level repair and the user clearly asked for it.
 
+## Token Resolution
+
+Preferred token resolution order for backtests agent execution:
+
+1. explicit token if one is provided by the caller
+2. cached token file under the skill runtime
+3. environment variable `FINTOOLS_ACCESS_TOKEN`
+
+Reject placeholder/example token values in any of these locations.
+
+When a real token is first obtained from an explicit caller-provided value or from `FINTOOLS_ACCESS_TOKEN`, persist it into:
+
+- `.runtime/runs/.fintools_access_token`
+
+After that, prefer the cached token for later runs so the user does not need to provide it repeatedly.
+
 ## Paths and Config
 
 Relevant paths:

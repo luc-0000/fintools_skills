@@ -61,6 +61,7 @@ Tasks:
 - if a pool already exists, run the full pool directly
 - if no pool exists, return a clear next-step response instead of silently creating a pool
 - support both command-driven pool assignment and UI-driven pool assignment
+- do not treat pool assignment as a prerequisite for simulator usage when historical `agent_trading` records already exist
 
 Suggested code areas:
 
@@ -92,7 +93,7 @@ Suggested code areas:
 
 Goal:
 
-- make the frontend a first-class route for pool assignment and backtest execution
+- keep the frontend usable for pool assignment and backtest execution without forcing unnecessary redesign
 
 Tasks:
 
@@ -100,6 +101,7 @@ Tasks:
 - verify the Pools page supports creating pools and managing pool stocks
 - verify the Simulators page supports creating and running simulators against remote-agent rules
 - make sure the UI path matches the workflow spec instead of assuming hidden DB setup
+- prefer preserving the current rule-centric UI unless a new frontend surface is strictly necessary
 
 Suggested code areas:
 
@@ -175,6 +177,7 @@ This task set is complete when:
 - a user can request a trading agent by `agent_id`
 - the system auto-creates the corresponding `remote_agent` rule when absent
 - the system branches correctly based on whether a pool is already assigned
-- both CLI/API and UI flows are usable
+- both CLI/API and UI flows are usable without introducing unnecessary new frontend complexity
+- simulator usage remains possible from existing run-derived records even if the rule currently has no assigned pool
 - docs accurately describe the behavior
 - no derived runtime outputs need to be manually fabricated

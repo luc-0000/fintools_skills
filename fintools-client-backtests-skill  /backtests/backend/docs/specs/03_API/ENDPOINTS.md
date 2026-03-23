@@ -84,7 +84,7 @@
 
 - Query params:
   - `bind_key`
-  - optional `rule_id`, `pool_id`, `stock_code`, `stock_id`, `status`, `rule_type`
+  - optional `rule_id`, `pool_id`, `stock_code`, `stock_id`, `status`, `rule_type`, `agent_id`
 - Returns rule rows enriched with:
   - `pools`
   - aggregated `stocks` count
@@ -93,6 +93,22 @@
 
 - Create rule
 - Defaults `type` to `agent`
+
+### `POST /api/v1/get_rule/rule/ensure_remote_agent`
+
+- Find or create a `remote_agent` rule by `agent_id`
+- Thin workflow entrypoint that delegates to the canonical remote-agent rule ensure logic
+
+### `GET /api/v1/get_rule/rule/agent/{agent_id}/pools`
+
+- Resolve the remote-agent rule by `agent_id`
+- Return all pools plus assignment state for that agent
+
+### `POST /api/v1/get_rule/rule/agent/{agent_id}/assign_pool`
+
+- Resolve the remote-agent rule by `agent_id`
+- Bind an existing pool by `pool_id` or `pool_name`
+- Delegates the actual binding to the existing rule-pool binding path
 
 ### `GET /api/v1/get_rule/rule/{rule_id}`
 
@@ -129,10 +145,30 @@
 ### `POST /api/v1/get_rule/rule/run/{rule_id}`
 
 - Executes the agent rule over all stocks in its pools
+- If no pool is assigned, returns failure payload with `data.needs_pool = true`
+- Lack of pool blocks new bulk execution scope selection, but does not invalidate existing historical `AgentTrading` data used by simulator flows
 
 ### `GET /api/v1/get_rule/rule/{rule_id}/trading`
 
 - Paged `AgentTrading` list
+
+### `POST /api/v1/get_rule/rule/{rule_id}/start`
+
+- Starts streamed execution for all stocks in the rule's pools
+- Use returned `execution_id` with `/rule/{rule_id}/stream`
+
+### `GET /api/v1/get_rule/rule/{rule_id}/stream`
+
+- SSE log stream for a previously started all-stocks execution
+
+### `POST /api/v1/get_rule/rule/{rule_id}/stock/{stock_code}/start`
+
+- Starts streamed execution for one stock
+- Use returned `execution_id` with `/rule/{rule_id}/stock/{stock_code}/stream`
+
+### `GET /api/v1/get_rule/rule/{rule_id}/stock/{stock_code}/stream`
+
+- SSE log stream for a previously started single-stock execution
 
 ## Simulator API
 
@@ -173,7 +209,7 @@
 
 - Updates global simulator thresholds
 
-## Non-Registered Internal API Surfaces
+## Internal Versus Public Surfaces
 
 - `get_earn` functions compute aggregate returns but are not exposed by current route registration
-- `agent_streaming.py` exposes streaming helpers, but their route wiring is not visible in the inspected route file and should be treated as internal until confirmed
+- `agent_streaming.py` streaming helpers are now publicly wired through the rule streaming endpoints above

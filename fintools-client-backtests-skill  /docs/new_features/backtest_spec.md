@@ -290,9 +290,10 @@
 对于 `backtests` 这条适配链路，token 来源必须遵循以下收敛规则：
 
 - 优先使用显式传入的 token
-- 如果没有显式传入，则只读取 skill 运行目录下已经缓存好的 `.runtime/runs/.fintools_access_token`
+- 如果没有显式传入，则优先读取 skill 运行目录下已经缓存好的 `.runtime/runs/.fintools_access_token`
+- 如果缓存还不存在，则允许回退读取环境变量 `FINTOOLS_ACCESS_TOKEN`
+- 一旦从显式传入或环境变量拿到真实 token，应写回 `.runtime/runs/.fintools_access_token` 供后续复用
 - 不允许 `backtests` 为了执行 agent 再去读取 `.env`
-- 不允许 `backtests` 再从环境变量回退读取 `FINTOOLS_ACCESS_TOKEN`
 - 如果缓存文件里仍然是示例值或占位 token，必须直接报明确错误，而不是继续请求远端后再得到 `401`
 
 ### 适配边界
@@ -393,7 +394,10 @@
 - `backtests` 主动执行 remote agent 时，必须复用 skill 现有调用链，而不是维护独立的 A2A 调用实现
 - `backtests` 只负责根据 UI 决定股票范围：`Run Today` 跑 pool 全量，单股 `Run` 只跑该股票
 - 获取 access token 的方式必须复用 skill 现有逻辑
-- `backtests` 适配层只允许读取显式传入 token 或 skill 已缓存的 `.runtime/runs/.fintools_access_token`，不能回退到 `.env` 或环境变量
+- `backtests` 适配层优先读取显式传入 token 和 skill 已缓存的 `.runtime/runs/.fintools_access_token`
+- 如果缓存还不存在，允许回退到环境变量 `FINTOOLS_ACCESS_TOKEN`
+- 一旦拿到真实 token，应写回 `.runtime/runs/.fintools_access_token`
+- 不允许回退到 `.env`
 - `backtests` 执行 remote agent 时，SSE 必须实时增量透传 skill 输出，不能等全部完成后再一次性输出
 - 不允许修改 `agents_client/` 目录下的现有实现；如需接入，只能新增适配层
 - `Simulators` 的 `Earns` 页面只展示 `Earns V.S. Dates`，不再依赖任何指数基准图或指数行情表

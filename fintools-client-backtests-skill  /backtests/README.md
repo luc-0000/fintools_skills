@@ -45,6 +45,18 @@ backtests/
 
 如果你是第一次使用整个 skill，建议先确认仓库级运行环境已经准备好，包括 `.runtime/env` 和 access token。
 
+对 access token，当前最简单可行的顺序是：
+
+- 显式传入
+- 已缓存的 token 文件
+- 环境变量 `FINTOOLS_ACCESS_TOKEN`
+
+如果第一次是通过显式传入或环境变量拿到真实 token，系统应把它写入：
+
+- `.runtime/runs/.fintools_access_token`
+
+后续优先复用这个缓存，不再重复向用户索要。
+
 ## 快速开始
 
 ### 1. 初始化数据库

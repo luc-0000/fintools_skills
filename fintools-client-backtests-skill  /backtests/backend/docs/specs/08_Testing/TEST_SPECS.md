@@ -12,6 +12,7 @@
 
 - Create local agent rule with module path in `info`
 - Create remote agent rule with URL in `info`
+- Ensure remote agent rule by `agent_id` reuses existing row instead of creating duplicates
 - Delete rule with attached pools, simulators, and trading rows -> all manual cleanup paths execute
 
 ### Simulator Config
@@ -31,10 +32,13 @@
 - Remote bool `true` -> `AgentTrading.trading_type = indicating`
 - Remote bool `false` -> `AgentTrading.trading_type = not_indicating`
 - Remote error -> no crash; stock run returns failure payload
+- Rule run with no assigned pool -> returns structured `needs_pool` signal
+- Streamed rule run with no assigned pool -> surfaces the same pool-missing branch at the streaming layer
 
 ### Trading Upsert
 
-- Two concurrent writes for same `(rule_id, stock, date)` yield one row with final trade type
+- Canonical upsert path is shared by manual execution and trading-agent sync
+- Two writes for same `(rule_id, stock, date)` yield one row with final trade type
 
 ## Simulator Tests
 
@@ -66,6 +70,8 @@
 - Rule -> AgentTrading -> Simulator full chain
 - Pool membership with suffix stock code joins correctly to base `stock.code`
 - Bind-key DB session reads from configured alternate engines
+- Backtests token resolution prefers explicit token, then cached token file, then `FINTOOLS_ACCESS_TOKEN`
+- Placeholder/example token values are rejected even when they come from cache or environment
 
 ## Manual Verification Cases
 

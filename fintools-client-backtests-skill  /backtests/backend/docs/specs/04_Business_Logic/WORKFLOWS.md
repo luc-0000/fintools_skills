@@ -11,22 +11,21 @@
 ## Workflow 1: Rule Execution
 
 1. Client triggers rule run for `rule_id`.
-2. System loads all pools for the rule.
-3. System expands pools to stock codes.
-4. For each stock:
-   - if `Rule.type == remote_agent`, call A2A client using `Rule.info` as base URL
-   - otherwise dynamically import the local module path in `Rule.info`
-5. Agent result is normalized:
+2. System resolves remote-agent execution prerequisites for that rule.
+3. If pools are assigned, system expands those pools to stock codes for a bulk run.
+4. If no pools are assigned, the run path returns a structured pool-missing signal instead of silently inventing stock scope.
+5. For each selected stock:
+   - if `Rule.type == remote_agent`, call the shared skill adapter using `Rule.info` as base URL
+6. Agent result is normalized:
    - `True` -> `indicating`
    - non-`True` -> `not_indicating`
-6. System upserts one `AgentTrading` row for `(rule_id, stock, trading_date)`.
-7. `Rule.updated_at` is refreshed on successful run.
+7. System upserts one `AgentTrading` row for `(rule_id, stock, trading_date)`.
+8. `Rule.updated_at` is refreshed on successful run.
 
 ### Edge Cases
 
 - stock code suffixes like `.SH` or `.SZ` are stripped before persistence in several paths
-- agent import failure returns an error payload instead of crashing the whole process
-- child processes created by local agents are force-cleaned after invocation
+- pool absence blocks new bulk scope selection, but does not invalidate existing `AgentTrading` rows already available for simulator replay
 
 ## Workflow 2: Pool/Rule Earn Aggregation
 
@@ -54,6 +53,9 @@ This is a read/update sidecar workflow used to enrich list endpoints.
    - `not_sufficient_to_buy`
 6. The engine writes `SimTrading` events and HTML log lines.
 7. Aggregate simulator metrics and serialized `earning_info` are updated.
+
+Pool membership is not a hard prerequisite for this replay path.
+If valid `AgentTrading` rows already exist for the rule, simulator replay can proceed even when the rule currently has no assigned pool.
 
 ## Trading Decision Rules
 
@@ -99,4 +101,4 @@ The earliest day satisfying any of the following wins:
 - most service methods rollback DB session on exception
 - simulator log writes are best-effort file appends
 - duplicate simulator trading events are suppressed by pre-insert existence check
-- duplicate agent trade events are prevented by unique constraint plus retry-on-integrity-error upsert logic
+- duplicate agent trade events are prevented by the canonical `AgentTrading` upsert path

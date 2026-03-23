@@ -147,6 +147,11 @@ Supported options:
 
 The system must not silently create or assign an arbitrary pool without user intent.
 
+This pool-missing branch applies to choosing the stock scope for a new bulk agent run.
+
+It does not mean the rule becomes unusable for all other features.
+If the rule already has historical `agent_trading` records, simulator workflows may still operate on those existing records even when no pool is currently assigned.
+
 ## Dual Interaction Modes
 
 The backtests system must remain operable through two equivalent operator surfaces.
@@ -171,6 +176,9 @@ In UI mode, the system opens or directs the user to the backtests frontend/backe
 - trigger or inspect backtest operations supported by the UI
 
 The UI path is not optional decoration. It is a required workflow entrypoint equal in status to CLI mode.
+
+However, the simplest valid implementation should preserve the current UI where practical.
+New workflow behavior should not force a large frontend redesign unless the existing UI cannot support the required outcome.
 
 ## Documentation Requirements
 
@@ -247,9 +255,10 @@ This workflow is satisfied when all of the following are true:
 3. A missing rule is created automatically before continuing.
 4. If the agent already has an assigned pool, the system runs that pool directly.
 5. If the agent lacks an assigned pool, the user is offered both CLI and UI assignment paths.
-6. `backtests/README.md` exists and is written for humans.
-7. A separate strict operating manual exists for LLM command-based operation.
-8. The machine manual clearly defines database, pool, and simulator-result mutation boundaries.
+6. Lack of an assigned pool does not block simulator usage when suitable historical agent run records already exist.
+7. `backtests/README.md` exists and is written for humans.
+8. A separate strict operating manual exists for LLM command-based operation.
+9. The machine manual clearly defines database, pool, and simulator-result mutation boundaries.
 
 ## Deliverables
 

@@ -96,7 +96,7 @@ class BacktestsSimulatorRunTests(unittest.TestCase):
             )
 
             with patch(
-                "end_points.get_simulator.operations.get_simulator_utils.stockDataFrameFromTushare",
+                "end_points.get_simulator.operations.get_simulator_utils.stockDataFrameFromDataTool",
                 return_value=stock_data,
             ):
                 run_sim_agent(db, 4)

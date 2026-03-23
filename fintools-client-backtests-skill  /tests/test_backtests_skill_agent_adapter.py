@@ -197,10 +197,13 @@ class BacktestsSkillAgentAdapterTests(unittest.TestCase):
             "end_points.get_rule.operations.skill_agent_adapter.load_cached_access_token",
             return_value="cached-real-token",
         ), patch(
+            "end_points.get_rule.operations.skill_agent_adapter.save_access_token",
+        ) as mock_save, patch(
             "end_points.get_rule.operations.skill_agent_adapter.token_file_path",
             return_value=Path("/tmp/fintools-runs/.fintools_access_token"),
         ), patch.dict("os.environ", {"FINTOOLS_ACCESS_TOKEN": "env-token"}, clear=False):
             self.assertEqual(_resolve_token(), "cached-real-token")
+            mock_save.assert_not_called()
 
     def test_resolve_token_rejects_placeholder_cached_token(self):
         with patch(
@@ -210,8 +213,37 @@ class BacktestsSkillAgentAdapterTests(unittest.TestCase):
             "end_points.get_rule.operations.skill_agent_adapter.load_cached_access_token",
             return_value="your-fintools-access-token",
         ), patch(
+            "end_points.get_rule.operations.skill_agent_adapter.save_access_token",
+        ) as mock_save, patch(
             "end_points.get_rule.operations.skill_agent_adapter.token_file_path",
             return_value=Path("/tmp/fintools-runs/.fintools_access_token"),
         ):
             with self.assertRaisesRegex(RuntimeError, "Invalid FINTOOLS access token cache"):
                 _resolve_token()
+            mock_save.assert_not_called()
+
+    def test_resolve_token_falls_back_to_environment_without_cache(self):
+        with patch(
+            "end_points.get_rule.operations.skill_agent_adapter.default_runs_parent_dir",
+            return_value=Path("/tmp/fintools-runs"),
+        ), patch(
+            "end_points.get_rule.operations.skill_agent_adapter.load_cached_access_token",
+            return_value=None,
+        ), patch(
+            "end_points.get_rule.operations.skill_agent_adapter.save_access_token",
+        ) as mock_save, patch(
+            "end_points.get_rule.operations.skill_agent_adapter.token_file_path",
+            return_value=Path("/tmp/fintools-runs/.fintools_access_token"),
+        ), patch.dict("os.environ", {"FINTOOLS_ACCESS_TOKEN": "env-token"}, clear=False):
+            self.assertEqual(_resolve_token(), "env-token")
+            mock_save.assert_called_once_with(Path("/tmp/fintools-runs"), "env-token")
+
+    def test_resolve_token_persists_explicit_token_into_cache(self):
+        with patch(
+            "end_points.get_rule.operations.skill_agent_adapter.default_runs_parent_dir",
+            return_value=Path("/tmp/fintools-runs"),
+        ), patch(
+            "end_points.get_rule.operations.skill_agent_adapter.save_access_token",
+        ) as mock_save:
+            self.assertEqual(_resolve_token("real-token"), "real-token")
+            mock_save.assert_called_once_with(Path("/tmp/fintools-runs"), "real-token")
