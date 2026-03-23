@@ -38,7 +38,7 @@ def _sim_log_path(sim_id) -> str:
 from db.models import SimTrading, Simulator, Stock, Rule
 from end_points.common.tech_indicators.tech_factors_utils import get_indicating_dates, get_trading_items_tech, \
     cal_assets_multi_buy, buy, cal_weighted_avg, cal_assets, sell
-from end_points.get_stock.operations.get_stock_utils import stockDataFrameFromTushare
+from end_points.get_stock.operations.get_stock_utils import stockDataFrameFromDataTool
 
 
 # def update_sim_model(db, sim_id, indicating_items, top_stocks):
@@ -142,7 +142,7 @@ def update_sim_model(db, sim_id, indicating_items):
 
 def get_stock_trading_items_model(db, stock_code, indicating_items, rule_type=RuleType.agent,
                                   profit_threshold=0, stop_loss=5, max_holding_days=5):
-    stock_data = stockDataFrameFromTushare(stock_code)
+    stock_data = stockDataFrameFromDataTool(stock_code)
     indicating_dates = []
     for each_item in indicating_items:
         if each_item['stock_code'] == stock_code:

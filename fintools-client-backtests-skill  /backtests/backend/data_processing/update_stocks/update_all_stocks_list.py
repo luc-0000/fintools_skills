@@ -6,7 +6,7 @@ from datetime import datetime
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from data_processing.data_provider.tushare import Tushare
+from data_processing.data_provider.data_provider_factory import get_data_tool
 from end_points.init_global import init_global
 from end_points.config.global_var import global_var
 
@@ -14,7 +14,7 @@ from end_points.config.global_var import global_var
 
 def update_stocks_list(db):
     try:
-        data_tool = Tushare()
+        data_tool = get_data_tool()
         data_tool.update_all_stocks_list(db)
 
     except Exception as e:

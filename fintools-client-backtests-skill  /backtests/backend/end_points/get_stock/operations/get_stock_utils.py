@@ -41,15 +41,27 @@ def get_stock_cap(db, stock_code):
     return cap
 
 
-def stockDataFrameFromTushare(stock_code: str, se: str = None, start_date: str = None, end_date: str = None):
+def stockDataFrameFromDataTool(stock_code: str, se: str = None, start_date: str = None, end_date: str = None):
     """
-    使用 Tushare API 获取股票数据，返回与数据库格式兼容的 DataFrame
+    统一的数据获取函数，根据配置使用 Tushare 或 Akshare
+
+    数据源通过 DataProviderConfig 配置，支持动态切换：
+    - akshare: 免费，无需 API Key（默认）
+    - tushare: 需要 API Key
+
+    切换方式：
+        方式1: 环境变量
+            export DATA_PROVIDER=tushare  # 或 akshare
+
+        方式2: 代码配置
+            from data_processing.data_provider.data_provider_factory import DataProviderConfig
+            DataProviderConfig.set_provider('tushare')  # 或 'akshare'
 
     Args:
         stock_code: 股票代码（如：000001）
         se: 交易所代码（sh/sz），如果不提供则自动判断
-        start_date: 开始日期（YYYYMMDD格式）
-        end_date: 结束日期（YYYYMMDD格式）
+        start_date: 开始日期（自动适配数据源格式）
+        end_date: 结束日期（自动适配数据源格式）
 
     Returns:
         DataFrame: 包含以下列的股票数据：
@@ -67,15 +79,21 @@ def stockDataFrameFromTushare(stock_code: str, se: str = None, start_date: str =
 
     Example:
         # 使用自动判断交易所
-        stock_data = stockDataFrameFromTushare('000001')
+        stock_data = stockDataFrameFromDataTool('000001')
 
-        # 指定交易所
-        stock_data = stockDataFrameFromTushare('600000', 'sh')
+        # 切换数据源为 Tushare
+        from data_processing.data_provider.data_provider_factory import DataProviderConfig
+        DataProviderConfig.set_provider('tushare')
+        stock_data = stockDataFrameFromDataTool('000001')
 
-        # 指定日期范围
-        stock_data = stockDataFrameFromTushare('000001', start_date='20200101', end_date='20231231')
+        # 切换数据源为 Akshare
+        DataProviderConfig.set_provider('akshare')
+        stock_data = stockDataFrameFromDataTool('000001')
     """
-    from data_processing.data_provider.tushare import Tushare
+    from data_processing.data_provider.data_provider_factory import get_data_tool, DataProviderConfig
+
+    # 获取当前配置的数据提供者
+    data_tool = get_data_tool()
 
     # 自动判断交易所
     if se is None:
@@ -88,5 +106,10 @@ def stockDataFrameFromTushare(stock_code: str, se: str = None, start_date: str =
         else:
             se = 'sz'  # 默认深圳
 
-    ts_client = Tushare()
-    return ts_client.get_stock_dataframe(stock_code, se, start_date, end_date)
+    # 调用数据提供者的 get_stock_dataframe 方法
+    return data_tool.get_stock_dataframe(stock_code, se, start_date, end_date)
+
+
+# 向后兼容：保留旧函数名，内部调用统一函数
+stockDataFrameFromTushare = stockDataFrameFromDataTool
+stockDataFrameFromAkshare = stockDataFrameFromDataTool
