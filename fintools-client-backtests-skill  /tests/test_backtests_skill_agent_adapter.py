@@ -17,7 +17,7 @@ if str(BACKEND_ROOT) not in sys.path:
 
 from db.models import AgentTrading, Base, Pool, PoolStock, Rule, RulePool
 from end_points.config.db_init import DatabaseWrapper
-from end_points.get_rule.operations.agent_streaming import stream_single_stock_execution
+from end_points.get_rule.operations.agent_streaming import stream_agent_execution, stream_single_stock_execution
 from end_points.get_rule.operations.agent_utils import run_agent_for_stock
 from end_points.get_rule.operations.skill_agent_adapter import _resolve_token, stream_trading_agent_via_skill
 
@@ -90,6 +90,31 @@ class BacktestsSkillAgentAdapterTests(unittest.TestCase):
             trading = session.query(AgentTrading).filter(AgentTrading.rule_id == rule.id).one()
             self.assertEqual(trading.stock, "000001")
             self.assertEqual(trading.trading_type, "not_indicating")
+        finally:
+            session.remove()
+
+    def test_stream_agent_execution_warns_when_rule_has_no_pool(self):
+        db, session = self._build_db()
+        try:
+            rule = Rule(
+                name="remote_108",
+                type="remote_agent",
+                info="https://example.com/api/v1/agents/108/a2a/",
+                description="",
+                agent_id="108",
+            )
+            session.add(rule)
+            session.commit()
+
+            async def run_stream():
+                items = []
+                async for item in stream_agent_execution(db, rule.id):
+                    items.append(item)
+                return items
+
+            logs = asyncio.run(run_stream())
+            self.assertEqual(logs[0]["type"], "warning")
+            self.assertIn("Assign a pool", logs[0]["message"])
         finally:
             session.remove()
 

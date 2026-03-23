@@ -53,6 +53,49 @@ class RuleCreateArgs(BaseModel):
         return value
 
 
+class EnsureRemoteAgentRuleArgs(BaseModel):
+    """Find or create a remote-agent rule by agent_id."""
+    agent_id: str = Field(..., description="Remote agent identifier", min_length=1, max_length=255)
+    name: Optional[str] = Field(None, description="Preferred rule name", min_length=1, max_length=255)
+    description: Optional[str] = Field(None, description="Rule description", min_length=1, max_length=255)
+    info: Optional[str] = Field(None, description="Remote agent base URL or serialized info")
+
+    @field_validator("agent_id", mode="before")
+    @classmethod
+    def normalize_agent_id(cls, value):
+        if value is None:
+            return value
+        text = str(value).strip()
+        if not text:
+            raise ValueError("agent_id cannot be blank")
+        return text
+
+    @field_validator("description", mode="before")
+    @classmethod
+    def normalize_blank_ensure_description(cls, value):
+        if value is None:
+            return None
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
+
+
+class AgentPoolBindArgs(BaseModel):
+    """Bind a pool to a remote-agent rule resolved by agent_id."""
+    pool_id: Optional[int] = Field(None, description="Pool ID to bind")
+    pool_name: Optional[str] = Field(None, description="Existing pool name to bind")
+
+    @field_validator("pool_name", mode="before")
+    @classmethod
+    def normalize_pool_name(cls, value):
+        if value is None:
+            return None
+        if isinstance(value, str):
+            text = value.strip()
+            return text or None
+        return value
+
+
 # Model schemas
 class RuleSchema(BaseModel):
     """Rule model schema"""

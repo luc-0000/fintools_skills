@@ -14,6 +14,9 @@ from end_points.get_rule.operations.get_rule_opts import (
     getStockListForRule,
     getParamsForRule,
     addRule,
+    ensureRemoteAgentRule,
+    getAgentPoolChoices,
+    assignPoolToAgent,
     runRuleAgent,
     getAgentTradingList,
     getRuleStocksIndicating,
@@ -29,7 +32,9 @@ from end_points.get_rule.rule_schema import (
     RuleSchema,
     RulePoolArgs,
     RulePoolsArgs,
-    RuleCreateArgs
+    RuleCreateArgs,
+    EnsureRemoteAgentRuleArgs,
+    AgentPoolBindArgs,
 )
 from end_points.common.const.consts import DataBase
 from end_points.common.utils.db import get_db
@@ -50,6 +55,7 @@ async def get_rule_list(
     stock_id: Optional[int] = Query(default=None),
     status: Optional[str] = Query(default=None),
     rule_type: Optional[str] = Query(default=None),
+    agent_id: Optional[str] = Query(default=None),
     db=Depends(get_db)
 ):
     """
@@ -66,7 +72,8 @@ async def get_rule_list(
             'stock_code': stock_code,
             'stock_id': stock_id,
             'status': status,
-            'rule_type': rule_type
+            'rule_type': rule_type,
+            'agent_id': agent_id,
         }
         rst = getRuleList(db, args)
         return rst
@@ -91,6 +98,57 @@ async def create_rule(
     try:
         args = rule_data.model_dump()
         rst = addRule(db, args)
+        return rst
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/rule/ensure_remote_agent", response_model=Dict[str, Any])
+async def ensure_remote_agent_rule(
+    rule_data: EnsureRemoteAgentRuleArgs,
+    db=Depends(get_db)
+):
+    """
+    Find or create a remote-agent rule by agent_id.
+
+    Returns:
+        Dictionary with code and ensured rule data.
+    """
+    try:
+        args = rule_data.model_dump(exclude_none=True)
+        rst = ensureRemoteAgentRule(db, args)
+        return rst
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/rule/agent/{agent_id}/pools", response_model=Dict[str, Any])
+async def get_agent_pools(
+    agent_id: str,
+    db=Depends(get_db)
+):
+    """
+    List all pools and show which are already assigned to the remote-agent rule for agent_id.
+    """
+    try:
+        rst = getAgentPoolChoices(db, agent_id)
+        return rst
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/rule/agent/{agent_id}/assign_pool", response_model=Dict[str, Any])
+async def assign_pool_to_agent(
+    agent_id: str,
+    pool_data: AgentPoolBindArgs,
+    db=Depends(get_db)
+):
+    """
+    Bind an existing pool to a remote-agent rule resolved by agent_id.
+    """
+    try:
+        args = pool_data.model_dump(exclude_none=True)
+        rst = assignPoolToAgent(db, agent_id, args)
         return rst
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -589,4 +647,3 @@ async def stream_single_stock_logs(
             "X-Accel-Buffering": "no"
         }
     )
-

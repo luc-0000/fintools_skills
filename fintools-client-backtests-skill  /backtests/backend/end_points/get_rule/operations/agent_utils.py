@@ -5,6 +5,7 @@ import logging
 
 from db.models import Simulator, AgentTrading, Rule, RulePool, PoolStock
 from end_points.common.const.consts import Trade
+from end_points.get_rule.operations.agent_trading_store import upsert_agent_trading
 from end_points.get_simulator.operations.get_simulator_utils import update_sim_model
 from end_points.get_rule.operations.skill_agent_adapter import (
     execute_trading_agent_via_skill,
@@ -12,6 +13,31 @@ from end_points.get_rule.operations.skill_agent_adapter import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def get_remote_rule_record(db, rule_id):
+    rule_record = db.session.query(Rule).filter(Rule.id == rule_id).first()
+    if not rule_record:
+        return {
+            'success': False,
+            'message': f'Rule {rule_id} not found',
+        }
+    if rule_record.type != 'remote_agent':
+        return {
+            'success': False,
+            'message': f'Unsupported rule type for backtests: {rule_record.type}',
+        }
+    base_url = rule_record.info
+    if not base_url:
+        return {
+            'success': False,
+            'message': 'Remote agent must have a base_url in info field',
+        }
+    return {
+        'success': True,
+        'rule': rule_record,
+        'base_url': base_url,
+    }
 
 
 def get_agent_buying_stocks(db, rule_id):
@@ -46,63 +72,62 @@ def get_agent_buying_stocks(db, rule_id):
     stock_list = [s.split('.')[0] if '.' in s else s for (s,) in stocks]
     return stock_list
 
+
+def get_rule_execution_plan(db, rule_id):
+    rule_info = get_remote_rule_record(db, rule_id)
+    if not rule_info.get('success'):
+        return {
+            'success': False,
+            'needs_pool': False,
+            'message': rule_info['message'],
+            'stock_count': 0,
+            'executed_count': 0,
+            'failed_count': 0,
+        }
+
+    pool_count = db.session.query(RulePool).filter(RulePool.rule_id == rule_id).count()
+    stock_list = get_agent_buying_stocks(db, rule_id)
+    if not stock_list:
+        message = 'Rule has no assigned pool. Assign a pool before running this agent.'
+        if pool_count > 0:
+            message = 'Rule pools do not contain any stocks. Add stocks before running this agent.'
+        return {
+            'success': False,
+            'needs_pool': True,
+            'message': message,
+            'rule': rule_info['rule'],
+            'base_url': rule_info['base_url'],
+            'pool_count': pool_count,
+            'stock_count': 0,
+            'executed_count': 0,
+            'failed_count': 0,
+            'stock_list': [],
+        }
+
+    return {
+        'success': True,
+        'needs_pool': False,
+        'message': 'Execution plan ready',
+        'rule': rule_info['rule'],
+        'base_url': rule_info['base_url'],
+        'pool_count': pool_count,
+        'stock_count': len(stock_list),
+        'stock_list': stock_list,
+    }
+
 def update_rule_trading(db, rule_id, trade_type, stock_code, trade_date):
     """
     Update trading record for a rule/stock/date.
-    Uses merge() to handle concurrent updates safely.
     """
-    from sqlalchemy import exc
-    from sqlalchemy.orm.attributes import flag_modified
-
-    # Strip stock exchange suffix before storing in database
-    stock_code = stock_code.split('.')[0] if '.' in stock_code else stock_code
-
-    # First try to get existing record
-    existing_record = db.session.query(AgentTrading)\
-        .filter(AgentTrading.rule_id == rule_id)\
-        .filter(AgentTrading.stock == stock_code)\
-        .filter(AgentTrading.trading_date == trade_date)\
-        .with_for_update()\
-        .first()
-
-    if existing_record:
-        # Update existing record and explicitly mark as modified
-        existing_record.trading_type = trade_type
-        flag_modified(existing_record, 'trading_type')
-    else:
-        # Insert new record (will fail if concurrent insert happened)
-        new_record = AgentTrading(
-            rule_id=rule_id,
-            trading_type=trade_type,
-            stock=stock_code,
-            trading_date=trade_date,
-        )
-        db.session.add(new_record)
-
-    try:
-        db.session.commit()
-    except exc.IntegrityError:
-        # Handle concurrent insert: retry by getting and updating
-        db.session.rollback()
-        existing_record = db.session.query(AgentTrading)\
-            .filter(AgentTrading.rule_id == rule_id)\
-            .filter(AgentTrading.stock == stock_code)\
-            .filter(AgentTrading.trading_date == trade_date)\
-            .first()
-        if existing_record:
-            existing_record.trading_type = trade_type
-            flag_modified(existing_record, 'trading_type')
-            db.session.commit()
-        else:
-            # Should not happen, but fallback to insert
-            new_record = AgentTrading(
-                rule_id=rule_id,
-                trading_type=trade_type,
-                stock=stock_code,
-                trading_date=trade_date,
-            )
-            db.session.add(new_record)
-            db.session.commit()
+    upsert_agent_trading(
+        db,
+        rule_id=rule_id,
+        stock_code=stock_code,
+        trading_date=trade_date,
+        trading_type=trade_type,
+        trading_amount=0,
+        commit=True,
+    )
     return
 
 def run_sim_agent(db, agent_sim_id):
@@ -155,31 +180,15 @@ def run_agent_for_stock(db, rule_id, stock_code):
     indicating_date = datetime.now().date()
     print(f'Start running agent {rule_id} for {stock_code}...')
 
-    # Get rule information to check type
-    rule_record = db.session.query(Rule).filter(Rule.id == rule_id).first()
-    if not rule_record:
+    rule_info = get_remote_rule_record(db, rule_id)
+    if not rule_info.get('success'):
         return {
             'success': False,
             'stock_code': stock_code,
-            'error': f'Rule {rule_id} not found'
+            'error': rule_info['message']
         }
-
-    rule_type = rule_record.type
-
-    if rule_type != 'remote_agent':
-        return {
-            'success': False,
-            'stock_code': stock_code,
-            'error': f'Unsupported rule type for backtests: {rule_type}'
-        }
-
-    base_url = rule_record.info
-    if not base_url:
-        return {
-            'success': False,
-            'stock_code': stock_code,
-            'error': 'Remote agent must have a base_url in info field'
-        }
+    rule_record = rule_info['rule']
+    base_url = rule_info['base_url']
 
     try:
         clean_stock_code = stock_code.split('.')[0] if '.' in stock_code else stock_code
@@ -228,11 +237,35 @@ def run_agent(db, rule_id):
         db: Database session
         rule_id: Agent rule ID
     """
-    buying_stocks_list = get_agent_buying_stocks(db, rule_id)
+    execution_plan = get_rule_execution_plan(db, rule_id)
+    if not execution_plan.get('success'):
+        return execution_plan
+
+    buying_stocks_list = execution_plan['stock_list']
     print(f'Buying stocks for today are: {buying_stocks_list}')
 
+    executed_count = 0
+    failed_count = 0
+    errors = []
     for stock_code in buying_stocks_list:
-        run_agent_for_stock(db, rule_id, stock_code)
+        result = run_agent_for_stock(db, rule_id, stock_code)
+        if result.get('success'):
+            executed_count += 1
+        else:
+            failed_count += 1
+            errors.append({
+                'stock_code': stock_code,
+                'error': result.get('error', 'unknown error'),
+            })
+
+    return {
+        'success': failed_count == 0,
+        'stock_count': len(buying_stocks_list),
+        'executed_count': executed_count,
+        'failed_count': failed_count,
+        'errors': errors,
+        'message': 'Agent execution completed' if failed_count == 0 else 'Agent execution completed with failures',
+    }
 
 
 async def execute_agent_with_skill_adapter(stock_code, base_url):

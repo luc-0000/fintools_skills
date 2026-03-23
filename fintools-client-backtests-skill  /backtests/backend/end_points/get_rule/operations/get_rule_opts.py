@@ -9,6 +9,7 @@ from end_points.get_earn.operations.get_earn_utils import *
 from end_points.get_pool.pool_schema import PoolSchema
 from end_points.get_rule.rule_schema import RuleSchema
 from end_points.get_rule.operations.get_rule_utils import *
+from end_points.get_rule.operations.remote_agent_rule_utils import ensure_remote_agent_rule_record
 from end_points.get_simulator.operations.get_simulator_opts import deleteSimulator
 from end_points.get_stock.stock_schema import StockSchema
 RETURN_THRESHOULD = 1.5
@@ -16,12 +17,15 @@ RETURN_THRESHOULD = 1.5
 
 def getRuleList(db, args):
     rule_type = args.get("rule_type")
+    agent_id = args.get("agent_id")
     filter_all = list()
     try:
         # get rules
         query = db.session.query(Rule)
         if rule_type:
             filter_all.append(Rule.type == rule_type)
+        if agent_id:
+            filter_all.append(Rule.agent_id == str(agent_id).strip())
         query = query.filter(and_(*filter_all))
         rows = query.all()
         total = query.count()
@@ -59,6 +63,140 @@ def getRuleList(db, args):
         e = APIException('2201')
         rst = e.to_dict()
     return rst
+
+
+def ensureRemoteAgentRule(db, args):
+    agent_id = str(args.get("agent_id") or "").strip()
+    name = (args.get("name") or "").strip()
+    description = args.get("description")
+    info = args.get("info")
+    if not agent_id:
+        return {"code": "FAILURE", "message": "agent_id is required"}
+
+    if description is None:
+        description = f"Remote trading agent {agent_id}"
+
+    try:
+        rule, created = ensure_remote_agent_rule_record(
+            db,
+            agent_id=agent_id,
+            info=info,
+            name=name,
+            description=description,
+        )
+        db.session.commit()
+        return {
+            "code": "SUCCESS",
+            "data": {
+                "id": rule.id,
+                "name": rule.name,
+                "type": rule.type,
+                "agent_id": rule.agent_id,
+                "created": created,
+            },
+        }
+    except Exception:
+        db.session.rollback()
+        err = traceback.format_exc()
+        logging.error(f"Error ensuring remote-agent rule: {err}")
+        return APIException("2209").to_dict()
+
+
+def getAgentPoolChoices(db, agent_id):
+    agent_id = str(agent_id or "").strip()
+    if not agent_id:
+        return {"code": "FAILURE", "message": "agent_id is required"}
+
+    try:
+        rule = (
+            db.session.query(Rule)
+            .filter(Rule.type == RuleType.remote_agent)
+            .filter(Rule.agent_id == agent_id)
+            .first()
+        )
+        if not rule:
+            return {"code": "FAILURE", "message": f"remote_agent rule not found for agent_id={agent_id}"}
+
+        bound_pool_ids = {
+            row[0]
+            for row in db.session.query(RulePool.pool_id).filter(RulePool.rule_id == rule.id).all()
+        }
+        pools = db.session.query(Pool).order_by(Pool.id.asc()).all()
+        items = []
+        for pool in pools:
+            items.append(
+                {
+                    "id": pool.id,
+                    "name": pool.name,
+                    "stocks": pool.stocks,
+                    "latest_date": pool.latest_date.isoformat() if pool.latest_date else None,
+                    "assigned": pool.id in bound_pool_ids,
+                }
+            )
+
+        return {
+            "code": "SUCCESS",
+            "data": {
+                "rule_id": rule.id,
+                "agent_id": rule.agent_id,
+                "rule_name": rule.name,
+                "assigned_pool_ids": sorted(bound_pool_ids),
+                "items": items,
+                "total": len(items),
+            },
+        }
+    except Exception:
+        db.session.rollback()
+        err = traceback.format_exc()
+        logging.error(f"Error getting agent pool choices: {err}")
+        return APIException("2201").to_dict()
+
+
+def assignPoolToAgent(db, agent_id, args):
+    agent_id = str(agent_id or "").strip()
+    pool_id = args.get("pool_id")
+    pool_name = (args.get("pool_name") or "").strip() or None
+    if not agent_id:
+        return {"code": "FAILURE", "message": "agent_id is required"}
+    if pool_id is None and not pool_name:
+        return {"code": "FAILURE", "message": "pool_id or pool_name is required"}
+
+    try:
+        ensure_result = ensureRemoteAgentRule(db, {"agent_id": agent_id})
+        if ensure_result.get("code") != "SUCCESS":
+            return ensure_result
+
+        rule_id = ensure_result["data"]["id"]
+        pool = None
+        if pool_id is not None:
+            pool = db.session.query(Pool).filter(Pool.id == pool_id).first()
+        elif pool_name:
+            pool = db.session.query(Pool).filter(Pool.name == pool_name).first()
+
+        if not pool:
+            return {"code": "FAILURE", "message": "pool not found"}
+
+        bind_result = addPoolToRule(db, rule_id, {"pool_ids": [pool.id]})
+        if bind_result.get("code") != "SUCCESS":
+            return bind_result
+
+        assigned_pools = getPoolNamesForRule(db, rule_id)
+        return {
+            "code": "SUCCESS",
+            "data": {
+                "rule_id": rule_id,
+                "agent_id": agent_id,
+                "pool_id": pool.id,
+                "pool_name": pool.name,
+                "assigned_pools": assigned_pools,
+                "created_rule": ensure_result["data"].get("created", False),
+            },
+        }
+    except Exception:
+        db.session.rollback()
+        err = traceback.format_exc()
+        logging.error(f"Error assigning pool to agent: {err}")
+        return APIException("2209").to_dict()
 
 
 def deleteRule(db, rule_id):
@@ -377,6 +515,23 @@ def addRule(db, args):
             if existing_rule_by_agent_id:
                 rst = {'code': 'FAILURE', 'message': 'Rule with this Agent ID already exists!'}
                 return rst
+            new_rule, _ = ensure_remote_agent_rule_record(
+                db,
+                agent_id=agent_id,
+                info=info,
+                name=name,
+                description=description,
+            )
+            db.session.commit()
+            rst = {
+                'code': 'SUCCESS',
+                'data': {
+                    'id': new_rule.id,
+                    'name': new_rule.name,
+                    'type': new_rule.type
+                }
+            }
+            return rst
 
         # Create new rule
         new_rule = Rule(
@@ -412,11 +567,38 @@ def runRuleAgent(db, rule_id):
     """Run an agent-type rule"""
     from end_points.get_rule.operations.agent_utils import run_agent
     try:
-        run_agent(db, rule_id)
+        result = run_agent(db, rule_id)
+        if result.get("needs_pool"):
+            rst = {
+                'code': 'FAILURE',
+                'message': result.get('message', 'Rule has no assigned pool'),
+                'data': {
+                    'id': rule_id,
+                    'needs_pool': True,
+                    'pool_count': result.get('pool_count', 0),
+                    'stock_count': result.get('stock_count', 0),
+                }
+            }
+            return rst
+        if not result.get("success", False):
+            rst = {
+                'code': 'FAILURE',
+                'message': result.get('message', 'Failed to run rule agent'),
+                'data': {
+                    'id': rule_id,
+                    'stock_count': result.get('stock_count', 0),
+                    'executed_count': result.get('executed_count', 0),
+                    'failed_count': result.get('failed_count', 0),
+                }
+            }
+            return rst
         rst = {
             'code': 'SUCCESS',
             'data': {
                 'id': rule_id,
+                'stock_count': result.get('stock_count', 0),
+                'executed_count': result.get('executed_count', 0),
+                'failed_count': result.get('failed_count', 0),
             }
         }
     except Exception as e:

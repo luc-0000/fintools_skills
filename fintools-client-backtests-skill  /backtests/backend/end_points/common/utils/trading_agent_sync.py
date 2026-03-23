@@ -11,6 +11,12 @@ from pathlib import Path
 
 from db.models import AgentTrading, Rule
 from end_points.common.const.consts import RuleType, Trade
+from end_points.get_rule.operations.agent_trading_store import upsert_agent_trading
+from end_points.get_rule.operations.remote_agent_rule_utils import (
+    default_remote_agent_description,
+    default_remote_agent_name,
+    ensure_remote_agent_rule_record,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -91,16 +97,6 @@ def _extract_agent_id(agent_url: str | None) -> str | None:
     return None
 
 
-def _default_agent_name(agent_id: str | None) -> str:
-    return f"trading_agent_{agent_id}" if agent_id else "trading_agent_auto"
-
-
-def _default_agent_description(agent_id: str | None) -> str:
-    if agent_id:
-        return f"Auto-created remote agent rule for trading agent {agent_id}"
-    return "Auto-created remote agent rule from trading_agent runtime data"
-
-
 def ensure_rule_agent_ids(db) -> int:
     updated = 0
     remote_rules = db.session.query(Rule).filter(Rule.type == RuleType.remote_agent).all()
@@ -148,8 +144,8 @@ def _load_run_summary_index(runs_dir: Path) -> dict[str, dict]:
         summaries[str(run_id)] = {
             "agent_url": agent_url,
             "agent_id": str(agent_id) if agent_id is not None else None,
-            "agent_name": payload.get("agent_name") or _default_agent_name(agent_id),
-            "agent_description": payload.get("agent_description") or _default_agent_description(agent_id),
+            "agent_name": payload.get("agent_name") or default_remote_agent_name(agent_id),
+            "agent_description": payload.get("agent_description") or default_remote_agent_description(agent_id),
         }
     return summaries
 
@@ -179,7 +175,7 @@ def ensure_trading_agent_source_schema(source_db_path: Path, runs_dir: Path | No
         for row in rows:
             summary = summary_index.get(str(row["run_id"] or "").strip(), {})
             agent_id = row["agent_id"] or summary.get("agent_id")
-            agent_name = row["agent_name"] or summary.get("agent_name") or _default_agent_name(agent_id)
+            agent_name = row["agent_name"] or summary.get("agent_name") or default_remote_agent_name(agent_id)
             if not agent_id and not row["agent_id"] and not row["agent_name"]:
                 continue
             if row["agent_id"] == agent_id and row["agent_name"] == agent_name:
@@ -245,35 +241,13 @@ def load_latest_daily_signals(source_db_path: Path, runs_dir: Path | None = None
             updated_at=updated_at,
             agent_id=agent_id,
             agent_url=agent_url,
-            agent_name=row["agent_name"] or summary.get("agent_name") or _default_agent_name(agent_id),
-            agent_description=summary.get("agent_description") or _default_agent_description(agent_id),
+            agent_name=row["agent_name"] or summary.get("agent_name") or default_remote_agent_name(agent_id),
+            agent_description=summary.get("agent_description") or default_remote_agent_description(agent_id),
         )
         agent_key = signal.agent_id or signal.agent_url or "unknown_agent"
         latest_by_day[(agent_key, signal.stock_code, signal.trading_date.date())] = signal
 
     return list(latest_by_day.values())
-
-
-def _build_unique_rule_name(db, preferred_name: str, agent_id: str | None) -> str:
-    candidate = (preferred_name or "").strip() or _default_agent_name(agent_id)
-    existing = db.session.query(Rule).filter(Rule.name == candidate).first()
-    if not existing:
-        return candidate
-
-    suffix = agent_id or "auto"
-    candidate = f"{candidate}_{suffix}"
-    existing = db.session.query(Rule).filter(Rule.name == candidate).first()
-    if not existing:
-        return candidate
-
-    counter = 2
-    while True:
-        retry = f"{candidate}_{counter}"
-        existing = db.session.query(Rule).filter(Rule.name == retry).first()
-        if not existing:
-            return retry
-        counter += 1
-
 
 def _find_or_create_rule_for_signal(db, signal: TradingAgentSignal) -> Rule:
     rule = None
@@ -310,16 +284,13 @@ def _find_or_create_rule_for_signal(db, signal: TradingAgentSignal) -> Rule:
             return remote_rules[0]
 
     if rule is None:
-        rule = Rule(
-            name=_build_unique_rule_name(db, signal.agent_name, signal.agent_id),
-            type=RuleType.remote_agent,
-            info=signal.agent_url or "",
-            description=(signal.agent_description or _default_agent_description(signal.agent_id))[:255],
+        rule, _ = ensure_remote_agent_rule_record(
+            db,
             agent_id=signal.agent_id,
+            info=signal.agent_url,
+            name=signal.agent_name,
+            description=signal.agent_description,
         )
-        db.session.add(rule)
-        db.session.flush()
-        logger.info("Auto-created remote_agent rule id=%s agent_id=%s info=%s", rule.id, rule.agent_id, rule.info)
         return rule
 
     changed = False
@@ -366,40 +337,23 @@ def sync_trading_agent_into_backtests(
     for signal in signals:
         rule = _find_or_create_rule_for_signal(db, signal)
         target_rule_ids.add(rule.id)
-        existing = (
-            db.session.query(AgentTrading)
-            .filter(AgentTrading.rule_id == rule.id)
-            .filter(AgentTrading.stock == signal.stock_code)
-            .filter(AgentTrading.trading_date == signal.trading_date)
-            .first()
+        store_result = upsert_agent_trading(
+            db,
+            rule_id=rule.id,
+            stock_code=signal.stock_code,
+            trading_date=signal.trading_date,
+            trading_type=signal.trading_type,
+            trading_amount=0,
+            created_at=signal.created_at,
+            updated_at=signal.updated_at,
+            commit=False,
         )
-
-        if existing:
-            changed = False
-            if existing.trading_type != signal.trading_type:
-                existing.trading_type = signal.trading_type
-                changed = True
-            if existing.updated_at != signal.updated_at:
-                existing.updated_at = signal.updated_at
-                changed = True
-            if changed:
-                updated += 1
-            else:
-                skipped += 1
-            continue
-
-        db.session.add(
-            AgentTrading(
-                rule_id=rule.id,
-                stock=signal.stock_code,
-                trading_date=signal.trading_date,
-                trading_type=signal.trading_type,
-                trading_amount=0,
-                created_at=signal.created_at,
-                updated_at=signal.updated_at,
-            )
-        )
-        inserted += 1
+        if store_result["inserted"]:
+            inserted += 1
+        elif store_result["updated"]:
+            updated += 1
+        else:
+            skipped += 1
 
     db.session.commit()
 

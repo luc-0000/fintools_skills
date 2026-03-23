@@ -12,6 +12,7 @@
 常见任务包括：
 
 - 给某个 trading agent 建立或检查对应的 rule
+- 先列出当前有哪些 pool，再用语言指定把某个 pool 绑定给某个 agent
 - 给 agent 绑定一个或多个股票池
 - 为股票池增删股票
 - 运行某个 agent 的今日股票池
@@ -143,6 +144,12 @@ npm run dev -- --host 127.0.0.1
 - `/api/v1/get_pool`
 - `/api/v1/get_stock`
 - `/api/v1/get_simulator`
+
+和语言绑定 pool 最相关的接口有：
+
+- `POST /api/v1/get_rule/rule/ensure_remote_agent`
+- `GET /api/v1/get_rule/rule/agent/{agent_id}/pools`
+- `POST /api/v1/get_rule/rule/agent/{agent_id}/assign_pool`
 
 ## 常见问题
 

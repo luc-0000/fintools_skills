@@ -13,6 +13,7 @@ Allowed goals:
 
 - inspect rules, pools, stocks, and simulators
 - create or update `remote_agent` rules
+- list existing pools for an agent and bind a chosen pool by language instruction
 - create pools
 - add or remove stocks from pools
 - bind or unbind pools from rules
@@ -196,10 +197,37 @@ curl -sS -X POST 'http://127.0.0.1:8888/api/v1/get_rule/rule_list' \
   }'
 ```
 
+### Ensure a rule exists by `agent_id`
+
+Use this when the workflow requires create-if-missing behavior.
+
+```bash
+curl -sS -X POST 'http://127.0.0.1:8888/api/v1/get_rule/rule/ensure_remote_agent' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "agent_id": "105",
+    "name": "Agent 105",
+    "description": "Remote trading agent 105",
+    "info": "http://example.com/api/v1/agents/105/a2a/"
+  }'
+```
+
 ### Inspect pools
 
 ```bash
 curl -sS 'http://127.0.0.1:8888/api/v1/get_pool/pool_list'
+```
+
+### List pools for an agent before assigning one
+
+Use this when the user asks questions like:
+
+- "都有哪些 pool"
+- "列出 agent 105 能选的 pool"
+- "先看看这个 agent 现在绑了哪些 pool"
+
+```bash
+curl -sS 'http://127.0.0.1:8888/api/v1/get_rule/rule/agent/105/pools'
 ```
 
 ### Create a pool
@@ -226,11 +254,36 @@ curl -sS -X POST 'http://127.0.0.1:8888/api/v1/get_rule/rule/1/pools' \
   -d '{"pool_ids":[1]}'
 ```
 
+### Bind a pool to an agent by language-resolved `agent_id`
+
+Use this when the user says things like:
+
+- "assign growth pool 给 105"
+- "把 alpha pool 绑定到 agent 105"
+
+By `pool_name`:
+
+```bash
+curl -sS -X POST 'http://127.0.0.1:8888/api/v1/get_rule/rule/agent/105/assign_pool' \
+  -H 'Content-Type: application/json' \
+  -d '{"pool_name":"growth"}'
+```
+
+By `pool_id`:
+
+```bash
+curl -sS -X POST 'http://127.0.0.1:8888/api/v1/get_rule/rule/agent/105/assign_pool' \
+  -H 'Content-Type: application/json' \
+  -d '{"pool_id":1}'
+```
+
 ### Run all stocks for a rule
 
 ```bash
 curl -sS -X POST 'http://127.0.0.1:8888/api/v1/get_rule/rule/run/1'
 ```
+
+If the rule has no assigned pool, this endpoint returns a failure payload with `needs_pool=true` so the caller can branch into pool assignment instead of pretending execution succeeded.
 
 For SSE-based execution:
 
