@@ -19,7 +19,7 @@ from db.models import AgentTrading, Base, Pool, PoolStock, Rule, RulePool
 from end_points.config.db_init import DatabaseWrapper
 from end_points.get_rule.operations.agent_streaming import stream_single_stock_execution
 from end_points.get_rule.operations.agent_utils import run_agent_for_stock
-from end_points.get_rule.operations.skill_agent_adapter import _resolve_token
+from end_points.get_rule.operations.skill_agent_adapter import _resolve_token, stream_trading_agent_via_skill
 
 
 class BacktestsSkillAgentAdapterTests(unittest.TestCase):
@@ -75,9 +75,13 @@ class BacktestsSkillAgentAdapterTests(unittest.TestCase):
                     items.append(item)
                 return items
 
+            async def fake_stream(*_args, **_kwargs):
+                yield {"type": "streaming_text", "message": "report line"}
+                yield {"type": "result", "result": {"result": {"action": "hold"}}}
+
             with patch(
-                "end_points.get_rule.operations.agent_streaming.execute_trading_agent_via_skill",
-                new=AsyncMock(return_value={"result": {"action": "hold"}}),
+                "end_points.get_rule.operations.agent_streaming.stream_trading_agent_via_skill",
+                new=fake_stream,
             ):
                 logs = asyncio.run(run_stream())
 
@@ -86,6 +90,77 @@ class BacktestsSkillAgentAdapterTests(unittest.TestCase):
             trading = session.query(AgentTrading).filter(AgentTrading.rule_id == rule.id).one()
             self.assertEqual(trading.stock, "000001")
             self.assertEqual(trading.trading_type, "not_indicating")
+        finally:
+            session.remove()
+
+    def test_stream_trading_agent_via_skill_yields_lines_incrementally(self):
+        async def fake_run_streaming_trading(stock_code, agent_url, token):
+            print("line one")
+            await asyncio.sleep(0)
+            print("line two")
+            await asyncio.sleep(0)
+            return {"result": {"action": "buy"}}
+
+        async def collect():
+            items = []
+            async for item in stream_trading_agent_via_skill("600519", "https://example.com/a2a/"):
+                items.append(item)
+            return items
+
+        with patch(
+            "end_points.get_rule.operations.skill_agent_adapter._resolve_token",
+            return_value="cached-real-token",
+        ), patch(
+            "end_points.get_rule.operations.skill_agent_adapter.run_streaming_trading",
+            new=fake_run_streaming_trading,
+        ):
+            items = asyncio.run(collect())
+
+        self.assertEqual(
+            [item["message"] for item in items if item["type"] == "streaming_text"],
+            ["line one", "line two"],
+        )
+        self.assertEqual(items[-1]["type"], "result")
+        self.assertEqual(items[-1]["result"]["result"]["action"], "buy")
+
+    def test_stream_single_stock_execution_streams_report_before_final_result(self):
+        db, session = self._build_db()
+        try:
+            rule = Rule(
+                name="remote_107",
+                type="remote_agent",
+                info="https://example.com/api/v1/agents/107/a2a/",
+                description="",
+                agent_id="107",
+            )
+            session.add(rule)
+            session.commit()
+
+            async def fake_stream(*_args, **_kwargs):
+                yield {"type": "streaming_text", "message": "report line 1"}
+                yield {"type": "streaming_text", "message": "report line 2"}
+                yield {"type": "result", "result": {"result": {"action": "hold"}}}
+
+            async def run_stream():
+                items = []
+                async for item in stream_single_stock_execution(db, rule.id, "000001"):
+                    items.append(item)
+                return items
+
+            with patch(
+                "end_points.get_rule.operations.agent_streaming.stream_trading_agent_via_skill",
+                new=fake_stream,
+            ):
+                logs = asyncio.run(run_stream())
+
+            event_types = [item["type"] for item in logs]
+            self.assertIn("streaming_text", event_types)
+            self.assertIn("remote_result", event_types)
+            self.assertLess(event_types.index("streaming_text"), event_types.index("remote_result"))
+            self.assertEqual(
+                [item["message"] for item in logs if item["type"] == "streaming_text"],
+                ["report line 1", "report line 2"],
+            )
         finally:
             session.remove()
 

@@ -304,6 +304,27 @@
 - 不允许修改 `agents_client/` 目录下的现有实现
 - 如果需要适配，适配代码必须放在 `backtests` 自己的调用层或单独 adapter 层
 
+### Streaming 输出要求
+
+当 `backtests` 在页面中执行 remote agent 并通过 SSE 展示日志时，report / status 文本必须实时增量输出。
+
+不允许采用“先把 skill stdout 全部缓存，等远端执行完成后再一次性吐给前端”的方式。
+
+正确行为应该是：
+
+- skill 调用链中一旦产生新的 stdout / stderr 文本
+- `backtests` 适配层就要立即把这一行增量转发到 SSE
+- 前端日志面板要边运行边看到 report 持续追加
+- 最终 `remote_result` 只能在远端执行真正结束后再输出
+
+如果需要实现这件事，允许在 `backtests` adapter 层增加“stdout/stderr -> async queue -> SSE”的流式桥接层。
+
+但仍然：
+
+- 不允许修改 `agents_client/`
+- 不允许重新实现另一套 remote agent 协议调用
+- 只能复用 skill 现有调用链，并把它的增量输出实时透传出来
+
 ## 目标实现流程
 
 目标稳定行为应该是：
@@ -346,4 +367,5 @@
 - `backtests` 只负责根据 UI 决定股票范围：`Run Today` 跑 pool 全量，单股 `Run` 只跑该股票
 - 获取 access token 的方式必须复用 skill 现有逻辑
 - `backtests` 适配层只允许读取显式传入 token 或 skill 已缓存的 `.runtime/runs/.fintools_access_token`，不能回退到 `.env` 或环境变量
+- `backtests` 执行 remote agent 时，SSE 必须实时增量透传 skill 输出，不能等全部完成后再一次性输出
 - 不允许修改 `agents_client/` 目录下的现有实现；如需接入，只能新增适配层
