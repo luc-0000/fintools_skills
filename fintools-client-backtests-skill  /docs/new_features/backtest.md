@@ -325,6 +325,33 @@
 - 不允许重新实现另一套 remote agent 协议调用
 - 只能复用 skill 现有调用链，并把它的增量输出实时透传出来
 
+## Simulator Earns 页面要求
+
+`Simulators` 详情页中的 `Earns` 页面，只保留：
+
+- `Earns V.S. Dates`
+
+不再展示任何指数基准对比图，包括但不限于：
+
+- `Earns V.S. Index300`
+
+### 后端数据要求
+
+`GET /api/v1/get_simulator/simulator/{id}/params` 只能依赖 simulator 自己已经存好的 `earning_info` 数据。
+
+也就是说：
+
+- 允许使用 `earns`
+- 允许使用 `sell_dates`
+- 允许使用 `bought_dates`
+- 允许使用 `assets`
+
+但不允许为了 `Earns` 页面再额外依赖指数行情表，比如：
+
+- `sh000001`
+
+如果本地没有指数表，`Earns` 页面也必须正常返回日期收益图所需数据，不能因为指数基准缺失把整个接口打挂。
+
 ## 目标实现流程
 
 目标稳定行为应该是：
@@ -369,3 +396,4 @@
 - `backtests` 适配层只允许读取显式传入 token 或 skill 已缓存的 `.runtime/runs/.fintools_access_token`，不能回退到 `.env` 或环境变量
 - `backtests` 执行 remote agent 时，SSE 必须实时增量透传 skill 输出，不能等全部完成后再一次性输出
 - 不允许修改 `agents_client/` 目录下的现有实现；如需接入，只能新增适配层
+- `Simulators` 的 `Earns` 页面只展示 `Earns V.S. Dates`，不再依赖任何指数基准图或指数行情表

@@ -41,19 +41,11 @@ const SimulatorDetail = () => {
   useEffect(() => {
     return () => {
       const earnsChartDom = document.getElementById('earnsGraph')
-      const earnsCompareChartDom = document.getElementById('earnsCompareGraph')
 
       if (earnsChartDom) {
         const earnsChart = echarts.getInstanceByDom(earnsChartDom)
         if (earnsChart) {
           earnsChart.dispose()
-        }
-      }
-
-      if (earnsCompareChartDom) {
-        const earnsCompareChart = echarts.getInstanceByDom(earnsCompareChartDom)
-        if (earnsCompareChart) {
-          earnsCompareChart.dispose()
         }
       }
     }
@@ -73,20 +65,6 @@ const SimulatorDetail = () => {
         earnsOption && earnsChart.setOption(earnsOption, false)
       } catch (error) {
         console.error('Failed to initialize earns chart:', error)
-      }
-    }
-
-    const earnsCompareChartDom = document.getElementById('earnsCompareGraph')
-    console.log('earnsCompareChartDom:', earnsCompareChartDom)
-
-    if (earnsCompareChartDom) {
-      try {
-        const earnsCompareChart = echarts.init(earnsCompareChartDom)
-        const earnsCompareOption = getEarnsCompareOption(earningInfo)
-        console.log('earnsCompareOption:', earnsCompareOption)
-        earnsCompareOption && earnsCompareChart.setOption(earnsCompareOption, false)
-      } catch (error) {
-        console.error('Failed to initialize earns compare chart:', error)
       }
     }
   }
@@ -153,53 +131,6 @@ const SimulatorDetail = () => {
           yAxisIndex: 3,
           data: earningInfo.avg_earns_after || [],
           smooth: true,
-        },
-      ],
-    }
-  }
-
-  const getEarnsCompareOption = (earningInfo: any): echarts.EChartsOption => {
-    return {
-      xAxis: {
-        name: 'Dates',
-        type: 'category',
-        data: earningInfo.bought_dates || [],
-      },
-      yAxis: [
-        {
-          name: 'Assets',
-          type: 'value',
-        },
-      ],
-      tooltip: {
-        trigger: 'axis',
-      },
-      legend: {
-        orient: 'horizontal',
-      },
-      series: [
-        {
-          name: 'SnowyTrader',
-          data: earningInfo.assets || [],
-          type: 'line',
-          yAxisIndex: 0,
-          markPoint: {
-            data: [{ type: 'max', name: 'Max' }, { type: 'min', name: 'Min' }],
-          },
-        },
-        {
-          name: 'Index300',
-          type: 'line',
-          yAxisIndex: 0,
-          data: earningInfo.index_close || [],
-          smooth: true,
-          lineStyle: {
-            opacity: 0.8,
-            color: '#d62828ff',
-          },
-          itemStyle: {
-            color: '#d62828ff',
-          },
         },
       ],
     }
@@ -278,12 +209,6 @@ const SimulatorDetail = () => {
                   <h3>Earns V.S. Dates</h3>
                   <div
                     id="earnsGraph"
-                    style={{ width: '100%', height: '400px' }}
-                  />
-                  <p></p>
-                  <h3>Earns V.S. Index300</h3>
-                  <div
-                    id="earnsCompareGraph"
                     style={{ width: '100%', height: '400px' }}
                   />
                 </div>

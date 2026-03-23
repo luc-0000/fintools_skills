@@ -1,7 +1,6 @@
 import json
 import logging
 import traceback
-import pandas as pd
 
 from end_points.common.const.consts import INIT_MONEY, DataBase, RuleType
 from sqlalchemy import and_
@@ -11,7 +10,6 @@ from end_points.get_simulator.simulator_schema import SimulatorSchema, SimTradin
 from end_points.get_simulator.operations.get_simulator_utils import write_sim_log, read_sim_log, delete_sim_log, \
     clean_sim_trading, max_drawback, sharpe, get_last_month_stats, cal_annual_earn
 from db.models import Simulator, Stock, Rule, SimTrading
-from end_points.get_stock.operations.get_stock_utils import stockDataFrame
 
 def getSimulatorList(db, args):
     status = args.get("status")
@@ -250,12 +248,6 @@ def getParamsForSim(db, sim_id, args):
         if assets and len(assets) > 0:
             earning_dict.update({'assets': calculate_growth_rate(assets)})
 
-        bought_dates = earning_dict.get('bought_dates')
-        if bought_dates and len(bought_dates) > 0:
-            index_close = get_index_data_for_dates(db, bought_dates)
-            if index_close and len(index_close) > 0:
-                earning_dict.update({'index_close': calculate_growth_rate(index_close)})
-
         rst = {
             'code': 'SUCCESS',
             'data': {
@@ -269,14 +261,6 @@ def getParamsForSim(db, sim_id, args):
         e = APIException('2201')
         rst = e.to_dict()
     return rst
-
-def get_index_data_for_dates(db, bought_dates, index_code='sh000001'):
-    index_df = stockDataFrame(db, index_code)
-    bought_dates_df = pd.DataFrame(bought_dates, columns=['date'])
-    bought_dates_df['date'] = pd.to_datetime(bought_dates_df['date'])
-    index_df_on_date = index_df.merge(bought_dates_df, on=['date'], how='right')
-    close_on_date = list(index_df_on_date.close.values)
-    return close_on_date
 
 def calculate_growth_rate(data):
     base = data[0]

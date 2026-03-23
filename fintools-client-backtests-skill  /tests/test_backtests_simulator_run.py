@@ -19,6 +19,7 @@ from db.models import AgentTrading, Base, Rule, SimTrading, Simulator, Simulator
 from end_points.config.db_init import DatabaseWrapper
 from end_points.common.const.consts import RuleType
 from end_points.get_rule.operations.agent_utils import run_sim_agent
+from end_points.get_simulator.operations.get_simulator_opts import getParamsForSim
 from end_points.get_simulator.operations.get_simulator_utils import align_indicator_dates_to_market_dates
 
 
@@ -111,5 +112,32 @@ class BacktestsSimulatorRunTests(unittest.TestCase):
             self.assertEqual(sim_trades[0].trading_date.date().isoformat(), "2026-03-23")
             self.assertEqual(sim_trades[1].trading_type, "buy")
             self.assertEqual(sim_trades[1].trading_date.date().isoformat(), "2026-03-24")
+        finally:
+            session.remove()
+
+    def test_get_params_for_sim_does_not_depend_on_index_table(self):
+        db, session = self._build_db()
+        try:
+            session.add(
+                Simulator(
+                    id=4,
+                    rule_id=3006,
+                    start_date=datetime(2026, 1, 1),
+                    init_money=100000,
+                    current_money=100000,
+                    current_shares="[]",
+                    status="running",
+                    earning_info='{"earns":[-2.14],"sell_dates":["2026-02-25T00:00:00"],"bought_dates":["2026-02-10T00:00:00"],"assets":[99643.725]}',
+                )
+            )
+            session.commit()
+
+            result = getParamsForSim(db, 4, {})
+
+            self.assertEqual(result["code"], "SUCCESS")
+            self.assertEqual(result["data"]["items"]["earns"], [-2.14])
+            self.assertEqual(result["data"]["items"]["sell_dates"], ["2026-02-25T00:00:00"])
+            self.assertAlmostEqual(result["data"]["items"]["assets"][0], 0.0)
+            self.assertNotIn("index_close", result["data"]["items"])
         finally:
             session.remove()
