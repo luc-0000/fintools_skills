@@ -307,6 +307,16 @@
 - 如果启动失败，或者没有返回可用的 `execution_id`，则关闭占位窗口并提示错误
 - 不允许先 `await` 异步请求，再调用 `window.open(...)`，否则浏览器可能把它当成 popup 并拦截
 
+### UI 执行产物归档规则
+
+- UI 的 `Run Today` 和单股 `Run` 不能只把日志流在 SSE 内存队列里
+- 这两条路径必须和 CLI 一样落到标准 `.runtime/runs/` 目录
+- 每次 UI 触发的真实执行都必须产出同类 artifacts：
+  - `run.log`
+  - `summary.json`
+  - `downloaded_reports/` 下的报告文件（如果远端有报告）
+- 也就是说，UI 执行必须复用 `scripts/run_agent_client.py` 作为标准执行入口，而不是再维护一条只给 SSE 用的并行执行路径
+
 ### Access Token 规则
 
 获取 access token 的方式必须复用 skill 里现有逻辑。
@@ -429,4 +439,5 @@
 - `backtests` 执行 remote agent 时，SSE 必须实时增量透传 skill 输出，不能等全部完成后再一次性输出
 - 不允许修改 `agents_client/` 目录下的现有实现；如需接入，只能新增适配层
 - `Run Today` 和单股 `Run` 不会因为异步 `window.open(...)` 而触发 popup blocked
+- UI 的 `Run Today` 和单股 `Run` 也会像 CLI 一样在 `.runtime/runs/` 下生成标准 run 目录、`run.log`、`summary.json`
 - `Simulators` 的 `Earns` 页面只展示 `Earns V.S. Dates`，不再依赖任何指数基准图或指数行情表

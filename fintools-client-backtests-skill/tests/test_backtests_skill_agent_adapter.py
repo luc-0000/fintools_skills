@@ -46,7 +46,7 @@ class BacktestsSkillAgentAdapterTests(unittest.TestCase):
                 "end_points.get_rule.operations.agent_utils.execute_agent_with_skill_adapter",
                 new=AsyncMock(return_value={"result": {"action": "buy"}}),
             ), patch(
-                "end_points.get_rule.operations.agent_utils.persist_trading_result_and_sync",
+                "end_points.get_rule.operations.agent_utils.sync_trading_result_and_backtests",
             ):
                 result = run_agent_for_stock(db, rule.id, "600519")
 
@@ -82,7 +82,7 @@ class BacktestsSkillAgentAdapterTests(unittest.TestCase):
                 "end_points.get_rule.operations.agent_streaming.stream_trading_agent_via_skill",
                 new=fake_stream,
             ), patch(
-                "end_points.get_rule.operations.agent_streaming.persist_trading_result_and_sync",
+                "end_points.get_rule.operations.agent_streaming.sync_trading_result_and_backtests",
             ):
                 logs = asyncio.run(run_stream())
 
@@ -116,13 +116,33 @@ class BacktestsSkillAgentAdapterTests(unittest.TestCase):
         finally:
             session.remove()
 
-    def test_stream_trading_agent_via_skill_yields_lines_incrementally(self):
-        async def fake_run_streaming_trading(stock_code, agent_url, token):
-            print("line one")
-            await asyncio.sleep(0)
-            print("line two")
-            await asyncio.sleep(0)
-            return {"result": {"action": "buy"}}
+    def test_stream_trading_agent_via_skill_uses_run_agent_client_entrypoint(self):
+        class _FakeStdout:
+            def __init__(self, lines):
+                self._lines = [line.encode("utf-8") for line in lines]
+
+            async def readline(self):
+                if not self._lines:
+                    return b""
+                return self._lines.pop(0)
+
+        class _FakeProcess:
+            def __init__(self, lines):
+                self.stdout = _FakeStdout(lines)
+
+            async def wait(self):
+                return 0
+
+        async def fake_create_subprocess_exec(*cmd, **kwargs):
+            self.assertEqual(Path(cmd[2]).name, "run_agent_client.py")
+            summary_path = Path("/tmp/fake-summary.json")
+            return _FakeProcess(
+                [
+                    "line one\n",
+                    "line two\n",
+                    f"[result] Summary written to: {summary_path}\n",
+                ]
+            )
 
         async def collect():
             items = []
@@ -134,13 +154,19 @@ class BacktestsSkillAgentAdapterTests(unittest.TestCase):
             "end_points.get_rule.operations.skill_agent_adapter._resolve_token",
             return_value="cached-real-token",
         ), patch(
-            "end_points.get_rule.operations.skill_agent_adapter.run_streaming_trading",
-            new=fake_run_streaming_trading,
+            "end_points.get_rule.operations.skill_agent_adapter.asyncio.create_subprocess_exec",
+            new=fake_create_subprocess_exec,
+        ), patch(
+            "end_points.get_rule.operations.skill_agent_adapter.Path.is_file",
+            return_value=True,
+        ), patch(
+            "end_points.get_rule.operations.skill_agent_adapter.Path.read_text",
+            return_value='{"action":"buy"}',
         ):
             items = asyncio.run(collect())
 
         self.assertEqual(
-            [item["message"] for item in items if item["type"] == "streaming_text"],
+            [item["message"] for item in items if item["type"] == "streaming_text"][:2],
             ["line one", "line two"],
         )
         self.assertEqual(items[-1]["type"], "result")
@@ -174,7 +200,7 @@ class BacktestsSkillAgentAdapterTests(unittest.TestCase):
                 "end_points.get_rule.operations.agent_streaming.stream_trading_agent_via_skill",
                 new=fake_stream,
             ), patch(
-                "end_points.get_rule.operations.agent_streaming.persist_trading_result_and_sync",
+                "end_points.get_rule.operations.agent_streaming.sync_trading_result_and_backtests",
             ):
                 logs = asyncio.run(run_stream())
 

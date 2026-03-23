@@ -199,6 +199,15 @@ When the user starts a remote-agent run from the UI:
 - the already-open window must be navigated to the concrete log route after that id is known
 - the UI must not wait for the async response and only then call `window.open(...)`, because browsers may block that popup
 
+### UI run-artifact behavior
+
+When the user starts `Run Today` or single-stock `Run` from the UI:
+
+- the execution must still go through the standard `scripts/run_agent_client.py` entrypoint
+- the UI path must not use a separate SSE-only in-memory execution path as the primary runner
+- therefore the run must create the same standard artifacts as CLI under `.runtime/runs/`
+- SSE is only responsible for relaying that run's output to the browser
+
 ## Documentation Requirements
 
 This workflow requires two separate documentation layers.
@@ -248,6 +257,7 @@ For trading-agent execution specifically:
 - `.runtime/database/trading_agent_runs.db` is the only writable execution-history store
 - `backtests.agent_trading` is derived state and must not be the first write target of a real run
 - any UI or backend execution path that writes `agent_trading` directly instead of writing `trading_agent_runs.db` first violates this workflow
+- any UI execution path that bypasses the standard `run_agent_client.py` run-artifact flow and therefore skips `.runtime/runs/` also violates this workflow
 
 ### Pool management boundary
 
@@ -287,6 +297,7 @@ This workflow is satisfied when all of the following are true:
 10. UI-triggered or CLI-triggered trading-agent execution writes raw results into `.runtime/database/trading_agent_runs.db` before any `agent_trading` update.
 11. `agent_trading` is only updated through the sync path from `.runtime/database/trading_agent_runs.db`.
 12. UI `Run Today` and single-stock `Run` do not fail because the browser blocks an async popup.
+13. UI `Run Today` and single-stock `Run` also create the standard `.runtime/runs/` run artifacts instead of using an SSE-only ephemeral execution path.
 
 ## Deliverables
 

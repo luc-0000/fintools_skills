@@ -155,3 +155,22 @@
   - `backtests/backend/end_points/get_rule/operations/agent_utils.py`
   - `backtests/backend/end_points/get_rule/operations/agent_streaming.py`
   - `backtests/backend/end_points/common/utils/trading_agent_sync.py`
+
+### 3. UI `Run` / `Run Today` execution originally bypassed the standard `.runtime/runs` artifact path
+
+- Symptom:
+  - the backtests UI log page could stream live output
+  - but the same execution did not produce the standard run directory under `.runtime/runs/`
+  - therefore no per-run `run.log`, `summary.json`, or aligned run artifact path existed for the UI-triggered execution
+- Root cause:
+  - the UI backend SSE path called the low-level streaming execution helper directly
+  - that path streamed stdout into an in-memory queue for SSE, but did not invoke `scripts/run_agent_client.py`
+  - `.runtime/runs/` creation, `run.log`, `summary.json`, report download path, and source-db write all live behind the standard `run_agent_client.py` entrypoint
+- Required fix direction:
+  - UI `Run` and `Run Today` must reuse the same `scripts/run_agent_client.py` execution entrypoint as CLI
+  - SSE should only relay that standard run's output, not create a second parallel execution path
+  - every UI-triggered execution must therefore also create a standard run directory under `.runtime/runs/`
+- Files involved:
+  - `backtests/backend/end_points/get_rule/operations/skill_agent_adapter.py`
+  - `backtests/backend/end_points/get_rule/operations/agent_streaming.py`
+  - `scripts/run_agent_client.py`

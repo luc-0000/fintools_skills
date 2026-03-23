@@ -2,8 +2,6 @@ from datetime import datetime
 import asyncio
 import pandas as pd
 import logging
-import sys
-from pathlib import Path
 
 from db.models import Simulator, AgentTrading, Rule, RulePool, PoolStock
 from end_points.common.const.consts import Trade
@@ -13,12 +11,6 @@ from end_points.get_rule.operations.skill_agent_adapter import (
     execute_trading_agent_via_skill,
     extract_trading_action,
 )
-
-REPO_ROOT = Path(__file__).resolve().parents[5]
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
-
-from scripts.trading_run_store import record_trading_agent_run
 
 logger = logging.getLogger(__name__)
 
@@ -123,20 +115,9 @@ def get_rule_execution_plan(db, rule_id):
         'stock_list': stock_list,
     }
 
-def persist_trading_result_and_sync(db, rule_record, stock_code, action, result, mode="streaming", trade_date=None):
-    trade_date = trade_date or datetime.now()
-    persisted_run = record_trading_agent_run(
-        stock_code=stock_code,
-        mode=mode,
-        result=result,
-        action=action,
-        agent_id=rule_record.agent_id,
-        agent_name=rule_record.name,
-        created_at=trade_date if isinstance(trade_date, datetime) else datetime.combine(trade_date, datetime.min.time()),
-        updated_at=trade_date if isinstance(trade_date, datetime) else datetime.combine(trade_date, datetime.min.time()),
-    )
+def sync_trading_result_and_backtests(db):
     sync_trading_agent_into_backtests(db)
-    return persisted_run
+    return
 
 def run_sim_agent(db, agent_sim_id):
     agent_rule_id = db.session.query(Simulator.rule_id).filter(Simulator.id == agent_sim_id).scalar()
@@ -206,15 +187,7 @@ def run_agent_for_stock(db, rule_id, stock_code):
         action = extract_trading_action(result)
         is_indicating = action == Trade.buy
         indicating = Trade.indicating if is_indicating else Trade.not_indicating
-        persist_trading_result_and_sync(
-            db,
-            rule_record,
-            stock_code,
-            action,
-            result,
-            mode="streaming",
-            trade_date=datetime.combine(indicating_date, datetime.min.time()),
-        )
+        sync_trading_result_and_backtests(db)
         print(f'Result from Remote Agent {rule_id}: {stock_code} is {indicating}!')
 
         rule_record.updated_at = datetime.now()
