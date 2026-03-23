@@ -31,7 +31,7 @@ backtests/
 ## 关键约定
 
 - 这里只支持 `remote_agent` 规则，不再面向本地 agent。
-- 默认数据库后端由根目录 [`config.json`](/Users/lu/development/fintools_all/fintools_skills/fintools-client-backtests-skill%20%20/config.json) 控制。
+- 默认数据库后端由根目录 [`config.json`](/Users/lu/development/fintools_all/fintools_skills/fintools-client-backtests-skill/config.json) 控制。
 - 默认 SQLite 文件在 `.runtime/database/backtests.sqlite3`。
 - `backtests` 启动时会按仓库配置初始化数据库连接；数据库种子数据默认来自 `backtests/backend/backups/.../json_export`。
 - 交易 agent 的执行结果会进入 `agent_trading`，回测执行结果会进入 `simulator` / `simulator_trading`。
@@ -177,7 +177,7 @@ curl -sS http://127.0.0.1:8888/health
 
 ### 找不到数据库文件
 
-先检查根目录 [`config.json`](/Users/lu/development/fintools_all/fintools_skills/fintools-client-backtests-skill%20%20/config.json) 的 `database.backend` 和 `database.sqlite.path`。
+先检查根目录 [`config.json`](/Users/lu/development/fintools_all/fintools_skills/fintools-client-backtests-skill/config.json) 的 `database.backend` 和 `database.sqlite.path`。
 
 默认 SQLite 路径是：
 
@@ -200,6 +200,6 @@ curl -sS http://127.0.0.1:8888/health
 
 如果你是让 LLM 或脚本来操作 backtests，不要只看这个 README。请同时遵循：
 
-- [`backtests/LLM_OPERATIONS.md`](/Users/lu/development/fintools_all/fintools_skills/fintools-client-backtests-skill%20%20/backtests/LLM_OPERATIONS.md)
+- [`backtests/LLM_OPERATIONS.md`](/Users/lu/development/fintools_all/fintools_skills/fintools-client-backtests-skill/backtests/LLM_OPERATIONS.md)
 
 那份文档定义了更严格的可改边界、推荐接口、禁止操作和执行顺序。

@@ -71,10 +71,10 @@ After that, prefer the cached token for later runs so the user does not need to 
 
 Relevant paths:
 
-- [`backtests/backend/manage.py`](/Users/lu/development/fintools_all/fintools_skills/fintools-client-backtests-skill%20%20/backtests/backend/manage.py)
-- [`backtests/backend/service.conf`](/Users/lu/development/fintools_all/fintools_skills/fintools-client-backtests-skill%20%20/backtests/backend/service.conf)
-- [`config.json`](/Users/lu/development/fintools_all/fintools_skills/fintools-client-backtests-skill%20%20/config.json)
-- [`backtests/backend/scripts/init_db.sh`](/Users/lu/development/fintools_all/fintools_skills/fintools-client-backtests-skill%20%20/backtests/backend/scripts/init_db.sh)
+- [`backtests/backend/manage.py`](/Users/lu/development/fintools_all/fintools_skills/fintools-client-backtests-skill/backtests/backend/manage.py)
+- [`backtests/backend/service.conf`](/Users/lu/development/fintools_all/fintools_skills/fintools-client-backtests-skill/backtests/backend/service.conf)
+- [`config.json`](/Users/lu/development/fintools_all/fintools_skills/fintools-client-backtests-skill/config.json)
+- [`backtests/backend/scripts/init_db.sh`](/Users/lu/development/fintools_all/fintools_skills/fintools-client-backtests-skill/backtests/backend/scripts/init_db.sh)
 
 Default service ports:
 
@@ -373,4 +373,4 @@ This rule is mandatory when the user says a frontend action does nothing.
 
 For human-oriented usage guidance, refer to:
 
-- [`backtests/README.md`](/Users/lu/development/fintools_all/fintools_skills/fintools-client-backtests-skill%20%20/backtests/README.md)
+- [`backtests/README.md`](/Users/lu/development/fintools_all/fintools_skills/fintools-client-backtests-skill/backtests/README.md)
