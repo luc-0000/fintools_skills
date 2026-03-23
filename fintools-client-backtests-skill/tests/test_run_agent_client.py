@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import sqlite3
 import sys
 import tempfile
 import types
@@ -243,6 +244,19 @@ class RunAgentClientTests(unittest.TestCase):
             self.assertEqual(Path(first_run).name, "fintools-agent-client-run-trading-600519-streaming-20260312-120000")
             self.assertEqual(Path(second_run).name, "fintools-agent-client-run-trading-600519-streaming-20260312-120000-002")
 
+    def test_create_run_dir_includes_agent_id_when_available(self):
+        fixed_now = datetime(2026, 3, 12, 12, 0, 0)
+        with tempfile.TemporaryDirectory(prefix="fintools-agent-client-parent-") as tmpdir, \
+             mock.patch.object(self.module, "datetime") as mock_datetime:
+            mock_datetime.now.return_value = fixed_now
+            mock_datetime.strftime = datetime.strftime
+            run_dir = self.module.create_run_dir(tmpdir, "trading", "600519", "streaming", agent_id="105")
+
+        self.assertEqual(
+            Path(run_dir).name,
+            "fintools-agent-client-run-trading-105-600519-streaming-20260312-120000",
+        )
+
     def test_local_runtime_dir_is_under_skill_runtime_directory(self):
         runtime_dir = self.module.local_runtime_dir()
         self.assertEqual(runtime_dir, self.module.SKILL_ROOT / ".runtime" / "env")
@@ -358,7 +372,7 @@ class RunAgentClientTests(unittest.TestCase):
 
             self.assertEqual(result, 0)
             mock_ensure_work_dir.assert_called_once_with(str(parent_dir))
-            mock_create_run_dir.assert_called_once_with(parent_dir, "trading", "600519", "streaming")
+            mock_create_run_dir.assert_called_once_with(parent_dir, "trading", "600519", "streaming", agent_id=None)
             child_args = mock_subprocess_run.call_args.args[0]
             self.assertIn("--work-dir", child_args)
             self.assertEqual(child_args[child_args.index("--work-dir") + 1], str(run_dir))
@@ -461,7 +475,11 @@ class RunAgentClientTests(unittest.TestCase):
             )()
 
             with mock.patch.object(self.module, "resolve_access_token", return_value="token"), \
-                 mock.patch.object(self.module, "run_streaming_trading", new=mock.AsyncMock(return_value=True)):
+                 mock.patch.object(
+                     self.module,
+                     "run_streaming_trading",
+                     new=mock.AsyncMock(return_value={"result": {"action": "buy"}}),
+                 ):
                 result = self.module.asyncio.run(self.module.run_inside_env(args))
 
             self.assertEqual(result, 0)
@@ -469,6 +487,7 @@ class RunAgentClientTests(unittest.TestCase):
             self.assertTrue(summary["success"])
             self.assertIsNone(summary["report_path"])
             self.assertIsNone(summary["error"])
+            self.assertTrue(summary["trading_run_id"])
 
     def test_run_inside_env_records_streaming_report_path_from_run_directory(self):
         with tempfile.TemporaryDirectory(prefix="fintools-agent-client-run-") as tmpdir:
@@ -495,7 +514,7 @@ class RunAgentClientTests(unittest.TestCase):
                 reports_dir.mkdir(parents=True, exist_ok=True)
                 report_path = reports_dir / "report.zip"
                 report_path.write_text("zip-placeholder", encoding="utf-8")
-                return True
+                return {"result": {"action": "hold"}}
 
             with mock.patch.object(self.module, "resolve_access_token", return_value="token"), \
                  mock.patch.object(self.module, "run_streaming_trading", new=mock.AsyncMock(side_effect=fake_run_streaming)):
@@ -531,7 +550,7 @@ class RunAgentClientTests(unittest.TestCase):
                 (reports_dir / "report.zip").write_text("zip-placeholder", encoding="utf-8")
                 print("stream body line")
                 print("stream err line", file=sys.stderr)
-                return True
+                return {"result": {"action": "sell"}}
 
             stdout_buffer = io.StringIO()
             stderr_buffer = io.StringIO()
@@ -552,6 +571,84 @@ class RunAgentClientTests(unittest.TestCase):
             self.assertIn("[result] Run log:", stdout_text)
             self.assertIn("[result] Run directory:", stdout_text)
             self.assertIn("[result] Run success: yes", stdout_text)
+
+    def test_persist_trading_result_inserts_source_db_row(self):
+        with tempfile.TemporaryDirectory(prefix="fintools-agent-client-db-") as tmpdir:
+            db_path = Path(tmpdir) / "trading_agent_runs.db"
+            with mock.patch("database.trading_agent_database.default_db_path", return_value=db_path):
+                persisted = self.module.persist_trading_result(
+                    stock_code="600519.SH",
+                    mode="streaming",
+                    result={"id": "run-1", "result": {"action": "buy"}},
+                    agent_id="105",
+                    agent_name="quant_agent_vlm",
+                )
+
+            conn = sqlite3.connect(db_path)
+            try:
+                row = conn.execute(
+                    "SELECT run_id, stock_code, action, mode, agent_id, agent_name FROM trading_agent_runs"
+                ).fetchone()
+            finally:
+                conn.close()
+
+            self.assertEqual(
+                row,
+                (
+                    persisted["trading_run_id"],
+                    "600519.SH",
+                    "buy",
+                    "streaming",
+                    "105",
+                    "quant_agent_vlm",
+                ),
+            )
+
+    def test_run_inside_env_persists_trading_run_into_source_db(self):
+        with tempfile.TemporaryDirectory(prefix="fintools-agent-client-run-") as tmpdir:
+            work_dir = Path(tmpdir)
+            source_db_path = work_dir / "trading_agent_runs.db"
+
+            args = type(
+                "Args",
+                (),
+                {
+                    "agent_type": "trading",
+                    "mode": "streaming",
+                    "stock_code": "600519",
+                    "agent_url": "http://example.com/api/v1/agents/105/a2a/",
+                    "access_token": None,
+                    "work_dir": str(work_dir),
+                    "task_id": None,
+                    "_in_env": True,
+                    "_work_dir_auto_created": False,
+                },
+            )()
+
+            with mock.patch.object(self.module, "resolve_access_token", return_value="token"), \
+                 mock.patch.object(
+                     self.module,
+                     "run_streaming_trading",
+                     new=mock.AsyncMock(return_value={"result": {"action": "buy"}}),
+                 ), \
+                 mock.patch(
+                     "database.trading_agent_database.default_db_path",
+                     return_value=source_db_path,
+                 ):
+                result = self.module.asyncio.run(self.module.run_inside_env(args))
+
+            self.assertEqual(result, 0)
+            summary = json.loads((work_dir / "summary.json").read_text(encoding="utf-8"))
+            self.assertEqual(summary["trading_runs_db_path"], str(source_db_path))
+            conn = sqlite3.connect(source_db_path)
+            try:
+                row = conn.execute(
+                    "SELECT stock_code, action, agent_id, agent_name FROM trading_agent_runs WHERE run_id = ?",
+                    (summary["trading_run_id"],),
+                ).fetchone()
+            finally:
+                conn.close()
+            self.assertEqual(row, ("600519", "buy", "105", "trading_agent_105"))
 
     def test_run_inside_env_uses_deep_research_polling_client(self):
         with tempfile.TemporaryDirectory(prefix="fintools-agent-client-run-") as tmpdir:

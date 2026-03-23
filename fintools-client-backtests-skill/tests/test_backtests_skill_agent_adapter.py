@@ -15,7 +15,7 @@ BACKEND_ROOT = SKILL_ROOT / "backtests" / "backend"
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
-from db.models import AgentTrading, Base, Pool, PoolStock, Rule, RulePool
+from db.models import Base, Pool, PoolStock, Rule, RulePool
 from end_points.config.db_init import DatabaseWrapper
 from end_points.get_rule.operations.agent_streaming import stream_agent_execution, stream_single_stock_execution
 from end_points.get_rule.operations.agent_utils import run_agent_for_stock
@@ -45,14 +45,13 @@ class BacktestsSkillAgentAdapterTests(unittest.TestCase):
             with patch(
                 "end_points.get_rule.operations.agent_utils.execute_agent_with_skill_adapter",
                 new=AsyncMock(return_value={"result": {"action": "buy"}}),
+            ), patch(
+                "end_points.get_rule.operations.agent_utils.persist_trading_result_and_sync",
             ):
                 result = run_agent_for_stock(db, rule.id, "600519")
 
             self.assertTrue(result["success"])
             self.assertEqual(result["action"], "buy")
-            trading = session.query(AgentTrading).filter(AgentTrading.rule_id == rule.id).one()
-            self.assertEqual(trading.stock, "600519")
-            self.assertEqual(trading.trading_type, "indicating")
         finally:
             session.remove()
 
@@ -82,14 +81,13 @@ class BacktestsSkillAgentAdapterTests(unittest.TestCase):
             with patch(
                 "end_points.get_rule.operations.agent_streaming.stream_trading_agent_via_skill",
                 new=fake_stream,
+            ), patch(
+                "end_points.get_rule.operations.agent_streaming.persist_trading_result_and_sync",
             ):
                 logs = asyncio.run(run_stream())
 
             self.assertTrue(any("Using skill agent execution flow" in item.get("message", "") for item in logs))
             self.assertTrue(any(item.get("type") == "remote_result" for item in logs))
-            trading = session.query(AgentTrading).filter(AgentTrading.rule_id == rule.id).one()
-            self.assertEqual(trading.stock, "000001")
-            self.assertEqual(trading.trading_type, "not_indicating")
         finally:
             session.remove()
 
@@ -175,6 +173,8 @@ class BacktestsSkillAgentAdapterTests(unittest.TestCase):
             with patch(
                 "end_points.get_rule.operations.agent_streaming.stream_trading_agent_via_skill",
                 new=fake_stream,
+            ), patch(
+                "end_points.get_rule.operations.agent_streaming.persist_trading_result_and_sync",
             ):
                 logs = asyncio.run(run_stream())
 

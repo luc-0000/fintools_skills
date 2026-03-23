@@ -115,3 +115,43 @@
 - Interpretation:
   - this is an upstream network/data-source issue in the current environment, not the local simulator date-alignment / SQLite insert bug above
   - the local simulator bug was fixed independently and covered by regression tests
+
+## 2026-03-24
+
+### 1. Remote-agent run page could fail to open logs because the browser blocked the popup
+
+- Symptom: clicking `Run Today` or the single-stock `Run` button on the remote-agent page could show `popup window blocked`, and the log page would not open.
+- Root cause:
+  - the frontend awaited the backend start request first
+  - only after that async boundary returned did it call `window.open(...)`
+  - browsers may treat that as an async popup instead of a direct user-gesture popup
+- Fix:
+  - open a placeholder log window synchronously inside the original click handler
+  - wait for the backend to return `execution_id`
+  - navigate the already-open window to the real `/agent-log/...` route
+  - if startup fails or no `execution_id` is returned, close the placeholder window and surface the error
+- Files involved:
+  - `backtests/frontend/src/pages/Rules/components/RuleList.tsx`
+
+### 2. Trading-agent execution path did not persist to `trading_agent_runs.db` before derived-table updates
+
+- Symptom:
+  - a real remote-agent run could finish and produce logs or reports
+  - but `.runtime/database/trading_agent_runs.db` still had no new row for that run
+  - meanwhile, `backtests.sqlite3` could already contain `agent_trading` rows from separate UI execution paths
+- Verified behavior:
+  - after CLI execution of `agent 69 / stock 000001`, no new `stock_code='000001' AND agent_id='69'` row appeared in `.runtime/database/trading_agent_runs.db`
+  - the observed `agent_trading` row in `backtests.sqlite3` predated that CLI run and matched a manual UI execution time
+- Root cause:
+  - current execution flow does not yet insert run results into `.runtime/database/trading_agent_runs.db`
+  - some `backtests` execution paths still call `update_rule_trading(...)` directly and therefore bypass the intended source-of-truth chain
+- Required fix direction:
+  - `.runtime/database/trading_agent_runs.db` must be the only source of truth for trading-agent execution results
+  - every execution must first persist raw result or action there
+  - `agent_trading` must only be updated through the sync path from `trading_agent_runs.db`
+  - UI, CLI, and backend execution helpers must not directly write `agent_trading`
+- Files involved:
+  - `scripts/run_agent_client.py`
+  - `backtests/backend/end_points/get_rule/operations/agent_utils.py`
+  - `backtests/backend/end_points/get_rule/operations/agent_streaming.py`
+  - `backtests/backend/end_points/common/utils/trading_agent_sync.py`

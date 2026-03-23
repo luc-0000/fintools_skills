@@ -7,7 +7,7 @@ from end_points.common.const.consts import Trade
 from end_points.get_rule.operations.agent_utils import (
     get_remote_rule_record,
     get_rule_execution_plan,
-    update_rule_trading,
+    persist_trading_result_and_sync,
 )
 from end_points.get_rule.operations.skill_agent_adapter import (
     extract_trading_action,
@@ -109,9 +109,15 @@ async def stream_remote_agent_logs(db, rule_id: int, stock_code: str) -> AsyncGe
 
         action = extract_trading_action(result)
         is_indicating = action == Trade.buy
-
-        indicating = Trade.indicating if is_indicating else Trade.not_indicating
-        update_rule_trading(db, rule_id, indicating, stock_code, datetime.now().date())
+        persist_trading_result_and_sync(
+            db,
+            rule_record,
+            stock_code,
+            action,
+            result,
+            mode="streaming",
+            trade_date=datetime.now(),
+        )
 
         result_msg = f"Decision: {'INDICATING' if is_indicating else 'NOT INDICATING'}"
         yield {

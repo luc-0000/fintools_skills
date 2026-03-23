@@ -103,6 +103,14 @@
 
 这一步属于 `backtests` 的正常初始化/展示前置流程，不是人工手动维护任务。
 
+如果是 `backtests` 自己主动触发了一次 remote agent 执行，落盘顺序也不能改变：
+
+1. 先执行 agent
+2. 先把原始结果写入 `.runtime/database/trading_agent_runs.db`
+3. 再通过同步流程把结果映射到 `backtests.agent_trading`
+
+不允许出现“执行完成后直接写 `agent_trading`，但没有先写 `trading_agent_runs.db`”的路径。
+
 ## 数据转换规则
 
 从 `trading_agent_runs.db` 转换到 `backtests.agent_trading` 时，交易结果映射规则必须是：
@@ -141,6 +149,16 @@
 - `backtests.agent_trading` 保存面向回测展示的、已经归一化后的日级信号记录
 
 因此，从 `backtests` 的视角看，`agent_trading` 是一个派生表，它的内容应该在每次 `backtests` 唤醒时，通过同步上游运行时数据库来更新。
+
+### Source Of Truth 要求
+
+必须明确以下约束：
+
+- `.runtime/database/trading_agent_runs.db` 是 trading-agent 执行结果的唯一 source of truth
+- `backtests.agent_trading` 只是从 source of truth 同步出来的派生表
+- 每一次真实执行都必须先写入 `trading_agent_runs.db`
+- 只有在 source of truth 成功落盘后，才允许继续执行 `agent_trading` 同步
+- UI、CLI、backend helper 都不允许直接把执行结果写入 `agent_trading`
 
 ## 当前归属策略
 
@@ -267,7 +285,8 @@
 
 - 决定要跑哪些股票
 - 把股票代码和 agent URL 交给现有 skill 调用链
-- 读取调用结果并更新 `agent_trading`
+- 读取调用结果并先写入 `trading_agent_runs.db`
+- 调用同步逻辑，把 source-of-truth 结果映射到 `agent_trading`
 
 ### UI 指定股票范围的执行规则
 
@@ -280,6 +299,13 @@
 
 - UI 决定“跑哪些股票”
 - skill 现有调用链决定“怎么调 agent”
+
+### UI 日志页打开规则
+
+- `Run Today` 和单股 `Run` 的日志窗口必须在原始点击事件里同步打开
+- 后端返回 `execution_id` 后，再把这个已打开窗口导航到实际日志页面
+- 如果启动失败，或者没有返回可用的 `execution_id`，则关闭占位窗口并提示错误
+- 不允许先 `await` 异步请求，再调用 `window.open(...)`，否则浏览器可能把它当成 popup 并拦截
 
 ### Access Token 规则
 
@@ -393,6 +419,8 @@
 - agent 没有 pool 时，不影响 `simulator` 和 `agent_trading` 的同步链路
 - `backtests` 主动执行 remote agent 时，必须复用 skill 现有调用链，而不是维护独立的 A2A 调用实现
 - `backtests` 只负责根据 UI 决定股票范围：`Run Today` 跑 pool 全量，单股 `Run` 只跑该股票
+- 真实执行结果必须先写入 `.runtime/database/trading_agent_runs.db`，再同步到 `agent_trading`
+- UI、CLI、backend execution helper 都不能直接写 `agent_trading`
 - 获取 access token 的方式必须复用 skill 现有逻辑
 - `backtests` 适配层优先读取显式传入 token 和 skill 已缓存的 `.runtime/runs/.fintools_access_token`
 - 如果缓存还不存在，允许回退到环境变量 `FINTOOLS_ACCESS_TOKEN`
@@ -400,4 +428,5 @@
 - 不允许回退到 `.env`
 - `backtests` 执行 remote agent 时，SSE 必须实时增量透传 skill 输出，不能等全部完成后再一次性输出
 - 不允许修改 `agents_client/` 目录下的现有实现；如需接入，只能新增适配层
+- `Run Today` 和单股 `Run` 不会因为异步 `window.open(...)` 而触发 popup blocked
 - `Simulators` 的 `Earns` 页面只展示 `Earns V.S. Dates`，不再依赖任何指数基准图或指数行情表

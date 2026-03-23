@@ -121,6 +121,16 @@ After rule existence is guaranteed, the system must determine whether the user w
 
 The system must support both modes as first-class flows.
 
+### Step 5: persist execution results through the source-of-truth database
+
+Once a remote trading-agent execution actually runs, the workflow must preserve the following write order:
+
+- first persist the raw execution result into `.runtime/database/trading_agent_runs.db`
+- treat that database as the only source of truth for trading-agent execution history
+- only after that succeeds may the system sync the normalized result into `backtests.agent_trading`
+
+Direct execution-time writes into `agent_trading` are workflow violations.
+
 ## Pool Assignment Workflow
 
 Once the target agent exists in rules, the next decision is whether a pool is already assigned.
@@ -180,6 +190,15 @@ The UI path is not optional decoration. It is a required workflow entrypoint equ
 However, the simplest valid implementation should preserve the current UI where practical.
 New workflow behavior should not force a large frontend redesign unless the existing UI cannot support the required outcome.
 
+### UI log-window behavior
+
+When the user starts a remote-agent run from the UI:
+
+- the log window must be opened synchronously inside the original click event
+- the backend start request may then resolve and return `execution_id`
+- the already-open window must be navigated to the concrete log route after that id is known
+- the UI must not wait for the async response and only then call `window.open(...)`, because browsers may block that popup
+
 ## Documentation Requirements
 
 This workflow requires two separate documentation layers.
@@ -224,6 +243,12 @@ The document must clearly distinguish:
 - records that must never be fabricated manually
 - records that must only arise from runtime execution such as simulator-produced results
 
+For trading-agent execution specifically:
+
+- `.runtime/database/trading_agent_runs.db` is the only writable execution-history store
+- `backtests.agent_trading` is derived state and must not be the first write target of a real run
+- any UI or backend execution path that writes `agent_trading` directly instead of writing `trading_agent_runs.db` first violates this workflow
+
 ### Pool management boundary
 
 The document must clarify:
@@ -259,6 +284,9 @@ This workflow is satisfied when all of the following are true:
 7. `backtests/README.md` exists and is written for humans.
 8. A separate strict operating manual exists for LLM command-based operation.
 9. The machine manual clearly defines database, pool, and simulator-result mutation boundaries.
+10. UI-triggered or CLI-triggered trading-agent execution writes raw results into `.runtime/database/trading_agent_runs.db` before any `agent_trading` update.
+11. `agent_trading` is only updated through the sync path from `.runtime/database/trading_agent_runs.db`.
+12. UI `Run Today` and single-stock `Run` do not fail because the browser blocks an async popup.
 
 ## Deliverables
 

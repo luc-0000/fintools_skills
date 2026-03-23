@@ -245,15 +245,19 @@ def default_agent_name(agent_type, agent_id):
     return None
 
 
-def create_run_dir(parent_dir, agent_type, stock_code, mode):
+def create_run_dir(parent_dir, agent_type, stock_code, mode, agent_id=None):
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    base_name = "{0}{1}-{2}-{3}-{4}".format(
-        RUN_PREFIX,
-        safe_name_fragment(agent_type),
-        safe_name_fragment(stock_code),
-        safe_name_fragment(mode),
-        timestamp,
+    name_parts = [RUN_PREFIX.rstrip("-"), safe_name_fragment(agent_type)]
+    if agent_id:
+        name_parts.append(safe_name_fragment(agent_id))
+    name_parts.extend(
+        [
+            safe_name_fragment(stock_code),
+            safe_name_fragment(mode),
+            timestamp,
+        ]
     )
+    base_name = "-".join(name_parts)
     parent_path = Path(parent_dir)
     run_dir = parent_path / base_name
     if not run_dir.exists():
@@ -466,6 +470,34 @@ def write_summary(work_dir, payload):
     return summary_path
 
 
+def persist_trading_result(stock_code, mode, result, agent_id=None, agent_name=None):
+    from database.trading_agent_database import TradingAgentDatabase
+
+    if "result" not in result or result.get("result") is None:
+        return {}
+
+    run_id = (
+        result.get("task_id")
+        or result.get("run_id")
+        or result.get("id")
+    )
+    payload = result.get("result", result)
+    database = TradingAgentDatabase()
+    saved_run_id = database.save_run(
+        stock_code=stock_code,
+        mode=mode,
+        result_payload=payload,
+        run_id=run_id,
+        agent_id=agent_id,
+        agent_name=agent_name,
+    )
+    return {
+        "trading_runs_db_path": str(database.db_path),
+        "trading_run_id": saved_run_id,
+        "action": payload.get("action") if isinstance(payload, dict) else None,
+    }
+
+
 def print_runtime_banner(parent_dir, work_dir, parent_auto_created, runtime_metadata):
     source = "auto-created parent directory" if parent_auto_created else "user-provided parent directory"
     print("Parent directory: {0}".format(parent_dir))
@@ -491,6 +523,8 @@ async def run_inside_env(args):
     error = None
     success = False
     report_path = None
+    execution_result = None
+    persisted_run = None
     original_stdout = sys.stdout
     original_stderr = sys.stderr
     with run_log.open("a", encoding="utf-8") as log_handle:
@@ -504,38 +538,40 @@ async def run_inside_env(args):
             token = resolve_access_token(args)
             if args.mode == "streaming" and args.agent_type == "deep_research":
                 announce_status("正在启动 Deep Research Agent（streaming）")
-                success = await run_streaming_deep_research(args.stock_code, args.agent_url, token)
+                execution_result = await run_streaming_deep_research(args.stock_code, args.agent_url, token)
+                success = execution_result
                 if success:
                     report_path = find_downloaded_report(reports_dir)
             elif args.mode == "streaming" and args.agent_type == "trading":
                 announce_status("正在启动 Trading Agent（streaming）")
-                success = await run_streaming_trading(args.stock_code, args.agent_url, token)
+                execution_result = await run_streaming_trading(args.stock_code, args.agent_url, token)
+                success = execution_result
                 if success:
                     report_path = find_downloaded_report(reports_dir)
             elif args.mode == "polling" and args.agent_type == "trading":
                 announce_status("正在启动 Trading Agent（polling）")
-                result = await run_polling_trading(
+                execution_result = await run_polling_trading(
                     args.stock_code,
                     args.agent_url,
                     token,
                     args.task_id,
                     report_output_dir=str(reports_dir),
                 )
-                success = result.get("status") == "completed"
-                report_path = result.get("downloaded_file")
-                error = result.get("error")
+                success = execution_result.get("status") == "completed"
+                report_path = execution_result.get("downloaded_file")
+                error = execution_result.get("error")
             elif args.mode == "polling" and args.agent_type == "deep_research":
                 announce_status("正在启动 Deep Research Agent（polling）")
-                result = await run_polling_deep_research(
+                execution_result = await run_polling_deep_research(
                     args.stock_code,
                     args.agent_url,
                     token,
                     args.task_id,
                     report_output_dir=str(reports_dir),
                 )
-                success = result.get("status") == "completed"
-                report_path = result.get("downloaded_file")
-                error = result.get("error")
+                success = execution_result.get("status") == "completed"
+                report_path = execution_result.get("downloaded_file")
+                error = execution_result.get("error")
             else:
                 fail(
                     "Unsupported agent/mode combination: {0} + {1}".format(
@@ -555,6 +591,23 @@ async def run_inside_env(args):
     if args.mode == "streaming":
         success = error is None and bool(success)
 
+    if success and args.agent_type == "trading":
+        if isinstance(execution_result, dict):
+            announce_status("正在写入 trading_agent_runs.db")
+            persisted_run = persist_trading_result(
+                stock_code=args.stock_code,
+                mode=args.mode,
+                result=execution_result,
+                agent_id=extract_agent_id(args.agent_url),
+                agent_name=default_agent_name(args.agent_type, extract_agent_id(args.agent_url)),
+            )
+            if persisted_run.get("trading_run_id"):
+                announce_status("trading_agent_runs.db 写入完成")
+            else:
+                announce_status("未拿到结构化 result，跳过 trading_agent_runs.db 写入")
+        else:
+            announce_status("未解析到交易动作，跳过 trading_agent_runs.db 写入")
+
     summary = {
         "agent_type": args.agent_type,
         "mode": args.mode,
@@ -572,6 +625,9 @@ async def run_inside_env(args):
         "report_path": report_path,
         "success": bool(success),
         "error": error,
+        "trading_run_id": persisted_run.get("trading_run_id") if persisted_run else None,
+        "trading_runs_db_path": persisted_run.get("trading_runs_db_path") if persisted_run else None,
+        "action": persisted_run.get("action") if persisted_run else None,
     }
     announce_status("正在写入 summary.json")
     summary_path = write_summary(work_dir, summary)
@@ -603,7 +659,13 @@ def main():
     announce_status("正在读取或缓存访问令牌")
     token = resolve_access_token(args, parent_dir)
     announce_status("正在创建本次 run 目录")
-    work_dir = create_run_dir(parent_dir, args.agent_type, args.stock_code, args.mode)
+    work_dir = create_run_dir(
+        parent_dir,
+        args.agent_type,
+        args.stock_code,
+        args.mode,
+        agent_id=extract_agent_id(args.agent_url),
+    )
     announce_status("正在准备 skill 本地运行环境")
     env_python, runtime_metadata = ensure_local_runtime()
     print_runtime_banner(parent_dir, work_dir, parent_auto_created, runtime_metadata)

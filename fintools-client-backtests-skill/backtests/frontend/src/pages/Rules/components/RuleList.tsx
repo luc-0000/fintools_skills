@@ -40,6 +40,32 @@ const RuleList: React.FC<RuleListProps> = ({ ruleType }) => {
 
   const { rules, total, loading, addRuleFunc, deleteRuleFunc, editRuleFunc } = useRuleListModel({ rule_type: ruleType })
 
+  const openPendingLogWindow = () => {
+    const popup = window.open('', '_blank')
+    if (!popup) {
+      message.error('Popup window blocked by browser')
+      return null
+    }
+
+    popup.document.title = 'Starting Execution...'
+    popup.document.body.innerHTML = '<div style="font-family: sans-serif; padding: 24px;">Starting execution...</div>'
+    return popup
+  }
+
+  const navigateLogWindow = (popup: Window | null, url: string) => {
+    if (popup && !popup.closed) {
+      popup.location.href = url
+      return
+    }
+    window.location.href = url
+  }
+
+  const closePendingLogWindow = (popup: Window | null) => {
+    if (popup && !popup.closed) {
+      popup.close()
+    }
+  }
+
   // Fetch stocks indicating status for a rule
   const fetchRuleStocksIndicating = async (ruleId: number, forceRefresh = false) => {
     if (!forceRefresh && ruleStocksData[ruleId]?.stocks) {
@@ -145,20 +171,27 @@ const RuleList: React.FC<RuleListProps> = ({ ruleType }) => {
           <a
             onClick={async () => {
               if (record.id) {
+                const popup = openPendingLogWindow()
+                if (!popup) {
+                  return
+                }
                 try {
                   const response = await agentService.startRuleExecution(record.id)
                   if (response && (response.code === 'SUCCESS')) {
                     const executionId = response.execution_id || response.data?.execution_id
                     if (executionId) {
                       const url = `/agent-log/${record.id}?execution_id=${executionId}`
-                      window.open(url, '_blank')
+                      navigateLogWindow(popup, url)
                     } else {
+                      closePendingLogWindow(popup)
                       message.error('No execution_id in response')
                     }
                   } else {
+                    closePendingLogWindow(popup)
                     message.error(`Failed to start execution: ${response?.message || 'Unknown error'}`)
                   }
                 } catch (error) {
+                  closePendingLogWindow(popup)
                   message.error('Failed to start execution')
                 }
               }
@@ -249,20 +282,27 @@ const RuleList: React.FC<RuleListProps> = ({ ruleType }) => {
                                 size="small"
                                 type="primary"
                                 onClick={async () => {
+                                  const popup = openPendingLogWindow()
+                                  if (!popup) {
+                                    return
+                                  }
                                   try {
                                     const response = await agentService.startStockExecution(ruleId!, stock.code) as any
                                     if (response?.code === 'SUCCESS') {
                                       const executionId = response.execution_id || response.data?.execution_id
                                       if (executionId) {
                                         const url = `/agent-log/${ruleId}/${stock.code}?execution_id=${executionId}`
-                                        window.open(url, '_blank')
+                                        navigateLogWindow(popup, url)
                                       } else {
+                                        closePendingLogWindow(popup)
                                         message.error('No execution_id in response')
                                       }
                                     } else {
+                                      closePendingLogWindow(popup)
                                       message.error(`Failed to start execution: ${response?.message || 'Unknown error'}`)
                                     }
                                   } catch (error) {
+                                    closePendingLogWindow(popup)
                                     message.error('Failed to start execution')
                                   }
                                 }}
