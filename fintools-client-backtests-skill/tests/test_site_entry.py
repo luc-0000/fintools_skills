@@ -155,7 +155,7 @@ class SiteEntryTests(unittest.TestCase):
         self.assertEqual(result["agent"]["id"], 105)
         self.assertEqual(mock_run.call_count, 1)
 
-    def test_prepare_agent_ensures_rule_and_reports_missing_pool(self):
+    def test_prepare_agent_fails_without_token_before_ui(self):
         args = type(
             "Args",
             (),
@@ -177,22 +177,14 @@ class SiteEntryTests(unittest.TestCase):
             "a2a_url": "https://warranties-movies-host-repository.trycloudflare.com/api/v1/agents/105/a2a/",
         }
         with mock.patch.object(self.module, "resolve_agent", return_value=agent_record), \
-             mock.patch.object(
-                 self.module,
-                 "_request_json",
-                 side_effect=[
-                     {"status": "healthy"},
-                     {"code": "SUCCESS", "data": {"token_ready": False, "runs_db_ready": True}},
-                     {"code": "SUCCESS", "data": {"id": 3006, "agent_id": "105", "created": True}},
-                     {"code": "SUCCESS", "data": {"assigned_pool_ids": [], "items": [], "rule_id": 3006}},
-                 ],
-             ) as mock_request:
-            result = self.module.prepare_agent(args)
+             mock.patch.object(self.module, "_request_json", return_value={"status": "healthy"}) as mock_request, \
+             mock.patch.dict("os.environ", {}, clear=True), \
+             mock.patch.object(self.module, "load_cached_access_token", return_value=None), \
+             self.assertRaises(SystemExit) as ctx:
+            self.module.prepare_agent(args)
 
-        self.assertEqual(result["rule"]["id"], 3006)
-        self.assertFalse(result["has_assigned_pool"])
-        self.assertFalse(result["runtime_ready"]["token_ready"])
-        self.assertEqual(mock_request.call_count, 4)
+        self.assertIn("Ask the user for FINTOOLS_ACCESS_TOKEN", str(ctx.exception))
+        self.assertEqual(mock_request.call_count, 1)
 
     def test_prepare_agent_marks_ready_when_pool_already_assigned(self):
         args = type(
@@ -246,13 +238,38 @@ class SiteEntryTests(unittest.TestCase):
             "_request_json",
             return_value={"code": "SUCCESS", "data": {"token_ready": True, "token_source": "explicit"}},
         ) as mock_request:
-            result = self.module.ensure_backtests_runtime(args)
+            result = self.module.ensure_backtests_runtime(args, require_token=True)
 
         self.assertTrue(result["token_ready"])
         mock_request.assert_called_once_with(
             "http://127.0.0.1:8888/api/v1/get_rule/runtime_ready",
             method="POST",
             payload={"require_token": True, "access_token": "real-token"},
+        )
+
+    def test_ensure_backtests_runtime_uses_cached_token_for_prepare_agent(self):
+        args = type(
+            "Args",
+            (),
+            {
+                "access_token": None,
+                "backtests_base_url": "http://127.0.0.1:8888/api/v1",
+            },
+        )()
+        with mock.patch.object(
+            self.module,
+            "_request_json",
+            return_value={"code": "SUCCESS", "data": {"token_ready": True, "token_source": "cache"}},
+        ) as mock_request, \
+             mock.patch.object(self.module, "load_cached_access_token", return_value="cached-token"), \
+             mock.patch.dict("os.environ", {}, clear=True):
+            result = self.module.ensure_backtests_runtime(args, require_token=True)
+
+        self.assertTrue(result["token_ready"])
+        mock_request.assert_called_once_with(
+            "http://127.0.0.1:8888/api/v1/get_rule/runtime_ready",
+            method="POST",
+            payload={"require_token": True},
         )
 
     def test_main_prints_agents_json(self):

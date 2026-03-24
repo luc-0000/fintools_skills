@@ -33,12 +33,19 @@ const RuleList: React.FC<RuleListProps> = ({ ruleType }) => {
   const [createModalVisible, setCreateModalVisible] = useState(false)
   const [deleteModalVisible, setDeleteModalVisible] = useState(false)
   const [editModalVisible, setEditModalVisible] = useState(false)
+  const [missingTokenModalVisible, setMissingTokenModalVisible] = useState(false)
+  const [missingTokenDetail, setMissingTokenDetail] = useState('')
   const [currentRule, setCurrentRule] = useState<Rule | undefined>()
   const [mainFilePath, setMainFilePath] = useState<string>('')
   const [editMainFilePath, setEditMainFilePath] = useState<string>('')
   const [ruleStocksData, setRuleStocksData] = useState<RuleStocksData>({})
 
   const { rules, total, loading, addRuleFunc, deleteRuleFunc, editRuleFunc } = useRuleListModel({ rule_type: ruleType })
+
+  const showMissingTokenDialog = (detail: string) => {
+    setMissingTokenDetail(detail)
+    setMissingTokenModalVisible(true)
+  }
 
   const ensureRuntimeReadyOrNotify = async () => {
     const response = await agentService.ensureRuntimeReady() as any
@@ -50,7 +57,7 @@ const RuleList: React.FC<RuleListProps> = ({ ruleType }) => {
     const detail = data?.token_path
       ? `Missing FINTOOLS access token. Expected cache file: ${data.token_path}`
       : 'Missing FINTOOLS access token'
-    message.error(detail)
+    showMissingTokenDialog(detail)
     return false
   }
 
@@ -185,14 +192,14 @@ const RuleList: React.FC<RuleListProps> = ({ ruleType }) => {
           <a
             onClick={async () => {
               if (record.id) {
-                let popup: Window | null = null
+                const popup = openPendingLogWindow()
+                if (!popup) {
+                  return
+                }
                 try {
                   const ready = await ensureRuntimeReadyOrNotify()
                   if (!ready) {
-                    return
-                  }
-                  popup = openPendingLogWindow()
-                  if (!popup) {
+                    closePendingLogWindow(popup)
                     return
                   }
                   const response = await agentService.startRuleExecution(record.id)
@@ -301,14 +308,14 @@ const RuleList: React.FC<RuleListProps> = ({ ruleType }) => {
                                 size="small"
                                 type="primary"
                                 onClick={async () => {
-                                  let popup: Window | null = null
+                                  const popup = openPendingLogWindow()
+                                  if (!popup) {
+                                    return
+                                  }
                                   try {
                                     const ready = await ensureRuntimeReadyOrNotify()
                                     if (!ready) {
-                                      return
-                                    }
-                                    popup = openPendingLogWindow()
-                                    if (!popup) {
+                                      closePendingLogWindow(popup)
                                       return
                                     }
                                     const response = await agentService.startStockExecution(ruleId!, stock.code) as any
@@ -420,6 +427,14 @@ const RuleList: React.FC<RuleListProps> = ({ ruleType }) => {
         onCancel={() => setDeleteModalVisible(false)}
       >
         Are you sure you want to delete rule {currentRule?.name}?
+      </Modal>
+      <Modal
+        title="Missing FINTOOLS Access Token"
+        open={missingTokenModalVisible}
+        onOk={() => setMissingTokenModalVisible(false)}
+        onCancel={() => setMissingTokenModalVisible(false)}
+      >
+        {missingTokenDetail}
       </Modal>
       <PopupForm
         onCancel={() => setEditModalVisible(false)}

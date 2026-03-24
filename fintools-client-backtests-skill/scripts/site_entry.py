@@ -10,6 +10,7 @@ import sys
 from urllib import error, request
 
 import discover_public_site
+from run_agent_client import default_runs_parent_dir, load_cached_access_token, token_file_path
 
 
 SITE_URL = "https://warranties-movies-host-repository.trycloudflare.com/"
@@ -189,15 +190,36 @@ def _api_url(base_url, path):
     return base_url.rstrip("/") + path
 
 
-def ensure_backtests_runtime(args):
+def _resolve_repo_local_token(args):
+    explicit_token = args.access_token or os.environ.get("FINTOOLS_ACCESS_TOKEN")
+    if explicit_token:
+        return explicit_token, "explicit"
+
+    runs_dir = default_runs_parent_dir()
+    cached_token = load_cached_access_token(runs_dir)
+    if cached_token:
+        return cached_token, "cache"
+
+    return None, str(token_file_path(runs_dir))
+
+
+def ensure_backtests_runtime(args, require_token=False):
     backend_url = args.backtests_base_url.rstrip("/")
     access_token = args.access_token or os.environ.get("FINTOOLS_ACCESS_TOKEN")
+    if require_token:
+        token_value, token_source = _resolve_repo_local_token(args)
+        if not token_value:
+            fail(
+                "Missing FINTOOLS access token before opening backtests UI. "
+                "Ask the user for FINTOOLS_ACCESS_TOKEN from the FinTools profile page, "
+                "save it to the current skill runtime, then retry. Expected cache file: {0}".format(token_source)
+            )
+
     payload = {
-        "require_token": False,
+        "require_token": require_token,
     }
     if access_token:
         payload["access_token"] = access_token
-        payload["require_token"] = True
 
     readiness = _request_json(
         _api_url(backend_url, "/get_rule/runtime_ready"),
@@ -211,7 +233,7 @@ def prepare_agent(args):
     agent_record = resolve_agent(args.agent)
     backend_url = args.backtests_base_url.rstrip("/")
     health = _request_json(_api_url(backend_url, "/health"))
-    runtime_ready = ensure_backtests_runtime(args)
+    runtime_ready = ensure_backtests_runtime(args, require_token=True)
     ensure_payload = {
         "agent_id": str(agent_record.get("id")),
         "name": agent_record.get("name") or "Agent {0}".format(agent_record.get("id")),

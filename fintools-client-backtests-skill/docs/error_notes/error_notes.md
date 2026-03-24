@@ -192,3 +192,39 @@
   - `backtests/backend/end_points/get_rule/operations/skill_agent_adapter.py`
   - `backtests/backend/end_points/get_rule/operations/agent_streaming.py`
   - `scripts/run_agent_client.py`
+
+### 5. Pools page could go empty because `pool_list` tried to write `latest_date` during a read
+
+- Symptom:
+  - the `Pools` page could suddenly render empty even though pool rows still existed in `.runtime/database/backtests.sqlite3`
+  - direct backend call to `GET /api/v1/get_pool/pool_list` returned legacy failure `2201`
+- Root cause:
+  - `getPoolList()` called `update_latest_date(db)` before returning rows
+  - that helper updates `pool.latest_date` and commits the session
+  - in environments where the current SQLite handle is effectively read-only, the write failed with `sqlite3.OperationalError: attempt to write a readonly database`
+  - the read endpoint then returned failure instead of serving the already-existing pool rows
+- Fix:
+  - keep the opportunistic `latest_date` refresh
+  - but if that write fails, rollback the session, log a warning, and continue returning the current pool list
+  - do not let `Pools` page availability depend on a best-effort metadata write
+- Verification:
+  - regression covers `getPoolList()` returning `SUCCESS` with existing rows when `update_latest_date()` raises during the refresh step
+
+### 6. Vite could show a false `Failed to resolve import "@/layouts/ProLayout"` overlay even when the file exists
+
+- Symptom:
+  - the frontend dev overlay reported `Failed to resolve import "@/layouts/ProLayout" from "src/router/index.tsx"`
+  - but `backtests/frontend/src/layouts/ProLayout.tsx` was still present on disk and production build still succeeded
+- Verified root cause:
+  - this was not a missing source file in the checked-in frontend
+  - the recurring case came from stale or duplicate Vite dev servers serving inconsistent module state for the copied install under `~/.openclaw/workspace/skills/...`
+  - checking the install showed more than one `vite --port 8000` process at the same time while the source tree still contained `src/layouts/ProLayout.tsx`
+- Fix / operator action:
+  - treat this overlay as a dev-server-state problem first, not a source-tree deletion
+  - verify on disk that `src/layouts/ProLayout.tsx` still exists and `vite.config.ts` still maps `@` to `./src`
+  - then stop old Vite processes for that install copy and restart a single clean frontend dev server
+- Regression coverage:
+  - `tests/test_frontend_router_alias.py` now locks the repository-side invariant that:
+    - `src/router/index.tsx` imports `@/layouts/ProLayout`
+    - `src/layouts/ProLayout.tsx` exists
+    - `vite.config.ts` still defines the `@ -> ./src` alias

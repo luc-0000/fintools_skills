@@ -13,7 +13,11 @@ from end_points.get_pool.pool_schema import PoolSchema
 
 def getPoolList(db):
     try:
-        update_latest_date(db)
+        try:
+            update_latest_date(db)
+        except Exception:
+            db.session.rollback()
+            logging.warning("Skipping pool latest_date refresh during pool_list read", exc_info=True)
         query = db.session.query(Pool)
         rows = query.order_by(Pool.id).all()
         total = query.count()

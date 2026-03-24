@@ -73,9 +73,11 @@ For `prepare-agent`, the wrapper:
 
 1. resolves the fixed-site agent by `id` or `name`
 2. checks local backtests backend health
-3. calls `POST /api/v1/get_rule/rule/ensure_remote_agent`
-4. calls `GET /api/v1/get_rule/rule/agent/{agent_id}/pools`
-5. returns stable state only: backend health, ensured rule, available pools, assigned pool ids, and whether a pool is already assigned
+3. requires a repo-local FINTOOLS token before any UI-opening workflow
+4. if `.runtime/runs/.fintools_access_token` is missing and no explicit token was provided, stop and ask the user for `FINTOOLS_ACCESS_TOKEN`
+5. only after token readiness passes, call `POST /api/v1/get_rule/rule/ensure_remote_agent`
+6. call `GET /api/v1/get_rule/rule/agent/{agent_id}/pools`
+7. return stable state only: backend health, ensured rule, available pools, assigned pool ids, and whether a pool is already assigned
 
 For `run-agent`, the wrapper:
 
@@ -94,7 +96,9 @@ When the user asks to run a trading agent from the fixed website, use this order
 4. If the agent has no assigned pool, ask one short follow-up:
    direct run for the stock now, or open the UI to assign a pool for that agent.
 5. If the user chooses direct run, call `site_entry.py run-agent --agent ... --stock-code ...`.
-6. If the user chooses UI, start backend and frontend, then give only a short explanation:
+6. If the user chooses UI, first ensure `.runtime/runs/.fintools_access_token` exists for this copied skill.
+7. If the token file is missing, ask the user for `FINTOOLS_ACCESS_TOKEN` before opening the UI.
+8. After the token is written into the current skill runtime, start backend and frontend, then give only a short explanation:
    open Pools, create pool, add stocks, go to Rules, assign pool, then use `Run Today` or single-stock `Run`.
 
 Do not silently invent a pool.
