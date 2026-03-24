@@ -1,19 +1,19 @@
 """
-Akshare 数据提供者 - 简化版，用于替代 Tushare
-只保留 simulator 运行所需的核心方法
+Akshare 数据提供者
+基于原项目逻辑，但使用腾讯接口解决连接问题
 """
-import pandas as pd
+import logging
+import time
+import traceback
 from datetime import datetime, timedelta
+from typing import List
+import pandas as pd
+from dateutil.parser import parser
+from tqdm import tqdm
 import akshare as ak
 
 
 class Akshare:
-    """
-    Akshare 数据提供者类
-
-    提供股票历史数据获取功能，与 Tushare API 兼容
-    Akshare 是免费的开源金融数据接口，无需 API Key
-    """
     _instance = None
     _initialized = False
 
@@ -25,13 +25,27 @@ class Akshare:
     def __init__(self, **kwargs):
         if not self._initialized:
             self.time_interval = kwargs.get("time_interval", "daily")
-            self.adj = kwargs.get("adj", "")
+            self.data_source = kwargs.get("data_source", None)
+            self.start_date = kwargs.get("start_date", None)
+            self.end_date = kwargs.get("end_date", None)
+
+            if "adj" in kwargs.keys():
+                self.adj = kwargs["adj"]
+                print(f"Using {self.adj} method.")
+            else:
+                self.adj = ""
+
+            if "period" in kwargs.keys():
+                self.period = kwargs["period"]
+            else:
+                self.period = "daily"
+
             Akshare._initialized = True
 
     def get_stock_dataframe(self, stock_code: str, se: str = None, start_date: str = None, end_date: str = None) -> pd.DataFrame:
         """
         获取股票历史K线数据，返回与数据库格式兼容的DataFrame
-        兼容 Tushare 的 get_stock_dataframe 方法
+        基于原项目逻辑，使用腾讯接口
 
         Args:
             stock_code: 股票代码（如：000001）
@@ -53,9 +67,7 @@ class Akshare:
                 - change_rate: 涨跌幅
                 - change_amount: 涨跌额
         """
-        # 自动判断交易所（如果未提供）
-        # 注意：Akshare 的 stock_zh_a_hist 只需要纯数字代码，不需要交易所后缀
-        # 所以这里的 se 参数实际上不被使用，但保留以兼容接口
+        # 自动判断交易所
         if se is None:
             if stock_code.startswith('6'):
                 se = 'sh'  # 上海证券交易所
@@ -73,43 +85,62 @@ class Akshare:
             start_date = (datetime.now() - timedelta(days=365*3)).strftime('%Y-%m-%d')
 
         try:
-            # 获取日线数据（使用前复权）
-            df = ak.stock_zh_a_hist(
-                symbol=stock_code,
-                period='daily',
-                start_date=start_date,
-                end_date=end_date,
-                adjust='qfq'  # 前复权
+            # 使用腾讯接口（解决连接问题）
+            tx_symbol = f"{se.lower()}{stock_code}"
+            tx_start = start_date.replace('-', '')
+            tx_end = end_date.replace('-', '')
+
+            df = ak.stock_zh_a_hist_tx(
+                symbol=tx_symbol,
+                start_date=tx_start,
+                end_date=tx_end,
+                adjust='qfq'
             )
 
             if df is None or df.empty:
                 print(f"⚠️ 未获取到股票数据: {stock_code}")
-                return pd.DataFrame()
+                empty_df = pd.DataFrame(columns=[
+                    'date', 'open', 'high', 'low', 'close', 'volume',
+                    'turnover', 'turnover_rate', 'shake_rate',
+                    'change_rate', 'change_amount'
+                ])
+                empty_df['date'] = pd.to_datetime(empty_df['date'])
+                return empty_df
 
-            # 重命名列以匹配数据库格式
-            df = df.rename(columns={
-                '日期': 'date',
-                '开盘': 'open',
-                '最高': 'high',
-                '最低': 'low',
-                '收盘': 'close',
-                '成交量': 'volume',
-                '成交额': 'turnover',
-                '振幅': 'shake_rate',
-                '涨跌幅': 'change_rate',
-                '涨跌额': 'change_amount',
-                '换手率': 'turnover_rate'
-            })
+            # 腾讯接口返回的列：['date', 'open', 'close', 'high', 'low', 'amount']
+            # 转换为数据库格式
 
-            # 转换日期格式为datetime（重要：后续计算需要对比datetime）
+            # 转换日期格式
             df['date'] = pd.to_datetime(df['date'])
 
-            # 确保振幅和涨跌幅是数值类型
-            df['shake_rate'] = pd.to_numeric(df['shake_rate'], errors='coerce')
-            df['change_rate'] = pd.to_numeric(df['change_rate'], errors='coerce')
-            df['change_amount'] = pd.to_numeric(df['change_amount'], errors='coerce')
+            # 重命名 amount 为 turnover
+            df = df.rename(columns={'amount': 'turnover'})
 
-            # 选择需要的列（与数据库格式一致）
+            # 按日期排序以确保计算正确
+            df = df.sort_values('date').reset_index(drop=True)
+
+            # 计算缺失的列（基于原项目逻辑）
+            df['prev_close'] = df['close'].shift(1)
+            df['change_rate'] = ((df['close'] - df['prev_close']) / df['prev_close'] * 100).round(2)
+            df['change_amount'] = (df['close'] - df['prev_close']).round(2)
+            df['shake_rate'] = ((df['high'] - df['low']) / df['prev_close'] * 100).round(2)
+
+            # 第一行设为0
+            df.loc[0, 'change_rate'] = 0
+            df.loc[0, 'change_amount'] = 0
+            df.loc[0, 'shake_rate'] = 0
+            df = df.drop(columns=['prev_close'])
+
+            # 腾讯接口的 turnover 是成交额，volume 设为0（不提供）
+            df['volume'] = 0
+            df['turnover_rate'] = 0
+
+            # 确保数值类型正确
+            for col in ['open', 'high', 'low', 'close', 'turnover', 'volume',
+                       'turnover_rate', 'shake_rate', 'change_rate', 'change_amount']:
+                df[col] = pd.to_numeric(df[col], errors='coerce')
+
+            # 选择需要的列
             columns_to_keep = [
                 'date', 'open', 'high', 'low', 'close', 'volume',
                 'turnover', 'turnover_rate', 'shake_rate',
@@ -118,25 +149,27 @@ class Akshare:
 
             result_df = df[columns_to_keep].copy()
 
-            # 按日期排序
-            result_df = result_df.sort_values('date').reset_index(drop=True)
-
             print(f"✅ 成功获取 {stock_code} 数据，共 {len(result_df)} 条记录")
             return result_df
 
         except Exception as e:
             print(f"❌ 获取股票 {stock_code} 数据失败: {e}")
-            import traceback
             traceback.print_exc()
-            return pd.DataFrame()
+            # 返回正确的空DataFrame结构
+            empty_df = pd.DataFrame(columns=[
+                'date', 'open', 'high', 'low', 'close', 'volume',
+                'turnover', 'turnover_rate', 'shake_rate',
+                'change_rate', 'change_amount'
+            ])
+            empty_df['date'] = pd.to_datetime(empty_df['date'])
+            return empty_df
 
     def update_all_stocks_list(self, db):
         """
         使用 Akshare API 更新所有股票列表到数据库
-        功能与 Tushare 的 update_all_stocks_list 相同
+        基于原项目逻辑
         """
         from db.models import Stock
-        from datetime import datetime
 
         print("Start updating all stocks list!")
         try:
@@ -194,9 +227,8 @@ class Akshare:
             print(datetime.now())
 
         except Exception as e:
-            import traceback
             err = traceback.format_exc()
-            print(f"❌ Error updating stocks list: {err}")
+            logging.error(f"Error updating stocks list: {err}")
             db.session.rollback()
             raise e
         return

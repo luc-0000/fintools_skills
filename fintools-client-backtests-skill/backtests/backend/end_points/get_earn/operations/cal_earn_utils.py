@@ -1,4 +1,5 @@
 from datetime import datetime
+import pandas as pd
 from db.models import Rule, StockRuleEarn
 from end_points.common.const.consts import INIT_MONEY, DataBase, Status
 from end_points.get_stock.operations.get_stock_utils import stockDataFrame
@@ -99,7 +100,15 @@ def indicating(stock_data, indicator_dates, N=1):
     return is_indicating, last_indicating_date
 
 def get_latest_N_date(stock_data, N):
-    latest_data = stock_data.iloc[-N]
+    # 添加空数据检查
+    if stock_data is None or len(stock_data) == 0:
+        # 返回一个很旧的日期，确保不会匹配任何indicator_dates
+        return pd.Timestamp(2020, 1, 1)
+    if len(stock_data) < N:
+        # 如果数据不足N条，使用最后一条
+        latest_data = stock_data.iloc[-1]
+    else:
+        latest_data = stock_data.iloc[-N]
     latest_date = latest_data['date']
     # latest_date = pd.Timestamp(2023, 1, 1, 0)
     return latest_date
