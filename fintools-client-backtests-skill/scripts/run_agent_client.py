@@ -282,7 +282,8 @@ def ensure_work_dir(raw_work_dir):
 
 
 def run_command(cmd, env=None, cwd=None):
-    subprocess.run(cmd, check=True, env=env, cwd=str(cwd) if cwd else None)
+    target_cwd = Path(cwd) if cwd else SKILL_ROOT
+    subprocess.run(cmd, check=True, env=env, cwd=str(target_cwd))
 
 
 def requirements_fingerprint():
@@ -687,7 +688,7 @@ def main():
     child_args = [env_python, "-u", str(Path(__file__).resolve())] + build_reexec_args(args, work_dir, parent_auto_created)
     announce_result("Runtime env: {0}".format(runtime_metadata["runtime_env_dir"]))
     announce_status("正在启动子进程执行 agent client")
-    completed = subprocess.run(child_args, env=child_env)
+    completed = subprocess.run(child_args, env=child_env, cwd=str(SKILL_ROOT))
     return completed.returncode
 
 

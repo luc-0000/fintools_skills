@@ -340,10 +340,18 @@ class RunAgentClientTests(unittest.TestCase):
 
                 self.assertEqual(result, 0)
                 called_args = mock_subprocess_run.call_args.kwargs["env"]
+                called_cwd = mock_subprocess_run.call_args.kwargs["cwd"]
                 called_cmd = mock_subprocess_run.call_args.args[0]
                 self.assertEqual(called_args["PYTHONUNBUFFERED"], "1")
                 self.assertEqual(called_args["FINTOOLS_RUNTIME_ENV_DIR"], str(self.module.SKILL_ROOT / ".runtime" / "env"))
+                self.assertEqual(called_cwd, str(self.module.SKILL_ROOT))
                 self.assertEqual(called_cmd[1], "-u")
+
+    def test_run_command_defaults_to_skill_root_cwd(self):
+        with mock.patch.object(self.module.subprocess, "run") as mock_subprocess_run:
+            self.module.run_command(["echo", "ok"])
+
+        self.assertEqual(mock_subprocess_run.call_args.kwargs["cwd"], str(self.module.SKILL_ROOT))
 
     def test_main_treats_work_dir_as_parent_and_creates_child_run_dir(self):
         with tempfile.TemporaryDirectory(prefix="fintools-agent-client-parent-") as tmpdir:
