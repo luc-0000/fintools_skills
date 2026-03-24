@@ -57,6 +57,12 @@ backtests/
 
 后续优先复用这个缓存，不再重复向用户索要。
 
+Rules 页面发起运行前，后端现在会先做一次 runtime readiness 检查：
+
+- 自动确保 `.runtime/runs/` 存在
+- 自动确保 `.runtime/database/trading_agent_runs.db` 和 schema 已初始化
+- 如果没有可用 token，则阻止运行并明确提示 token 文件位置
+
 ## 快速开始
 
 ### 1. 初始化数据库
@@ -69,6 +75,10 @@ cd backtests/backend
 默认会创建：
 
 - `.runtime/database/backtests.sqlite3`
+
+首次运行 agent 前的 readiness 检查还会补齐：
+
+- `.runtime/database/trading_agent_runs.db`
 
 ### 2. 启动后端
 

@@ -4,6 +4,10 @@ import type { PageParams } from '@/types'
 
 // Rule Agent 服务（运行 agent 类型的 rule）
 export const agentService = {
+  ensureRuntimeReady: () => {
+    return get('/v1/get_rule/runtime_ready')
+  },
+
   // 开始执行 Rule (所有stocks)
   startRuleExecution: (rule_id: number) => {
     return post(`/v1/get_rule/rule/${rule_id}/start`, {})

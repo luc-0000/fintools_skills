@@ -23,6 +23,7 @@ from end_points.get_rule.operations.get_rule_opts import (
     runAgentForStock
 )
 from end_points.get_rule.operations.agent_streaming import stream_agent_execution, stream_single_stock_execution
+from end_points.common.utils.runtime_readiness import ensure_runtime_ready
 from end_points.get_rule.operations.execution_manager import execution_manager
 
 logger = logging.getLogger(__name__)
@@ -480,6 +481,11 @@ async def start_rule_execution_endpoint(
     """
     logger.info(f"=== Starting execution for rule_id={rule_id} ===")
 
+    try:
+        ensure_runtime_ready(require_token=True)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
     # Create execution
     execution = execution_manager.create_execution(rule_id, stock_code=None)
 
@@ -521,6 +527,11 @@ async def start_single_stock_execution_endpoint(
     """
     logger.info(f"=== Starting execution for rule_id={rule_id}, stock_code={stock_code} ===")
 
+    try:
+        ensure_runtime_ready(require_token=True)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
     # Create execution
     execution = execution_manager.create_execution(rule_id, stock_code=stock_code)
 
@@ -548,6 +559,18 @@ async def start_single_stock_execution_endpoint(
         'rule_id': rule_id,
         'stock_code': stock_code
     }
+
+
+@router.get("/runtime_ready")
+async def get_runtime_ready():
+    try:
+        readiness = ensure_runtime_ready(require_token=False)
+        return {
+            'code': 'SUCCESS',
+            'data': readiness,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/rule/{rule_id}/stream")

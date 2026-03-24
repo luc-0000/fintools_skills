@@ -40,6 +40,20 @@ const RuleList: React.FC<RuleListProps> = ({ ruleType }) => {
 
   const { rules, total, loading, addRuleFunc, deleteRuleFunc, editRuleFunc } = useRuleListModel({ rule_type: ruleType })
 
+  const ensureRuntimeReadyOrNotify = async () => {
+    const response = await agentService.ensureRuntimeReady() as any
+    const data = response?.data || {}
+    if (data?.token_ready) {
+      return true
+    }
+
+    const detail = data?.token_path
+      ? `Missing FINTOOLS access token. Expected cache file: ${data.token_path}`
+      : 'Missing FINTOOLS access token'
+    message.error(detail)
+    return false
+  }
+
   const openPendingLogWindow = () => {
     const popup = window.open('', '_blank')
     if (!popup) {
@@ -176,6 +190,11 @@ const RuleList: React.FC<RuleListProps> = ({ ruleType }) => {
                   return
                 }
                 try {
+                  const ready = await ensureRuntimeReadyOrNotify()
+                  if (!ready) {
+                    closePendingLogWindow(popup)
+                    return
+                  }
                   const response = await agentService.startRuleExecution(record.id)
                   if (response && (response.code === 'SUCCESS')) {
                     const executionId = response.execution_id || response.data?.execution_id
@@ -287,6 +306,11 @@ const RuleList: React.FC<RuleListProps> = ({ ruleType }) => {
                                     return
                                   }
                                   try {
+                                    const ready = await ensureRuntimeReadyOrNotify()
+                                    if (!ready) {
+                                      closePendingLogWindow(popup)
+                                      return
+                                    }
                                     const response = await agentService.startStockExecution(ruleId!, stock.code) as any
                                     if (response?.code === 'SUCCESS') {
                                       const executionId = response.execution_id || response.data?.execution_id
