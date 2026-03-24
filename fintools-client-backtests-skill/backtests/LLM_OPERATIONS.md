@@ -41,6 +41,28 @@ When the user asks to run a trading agent, use this order:
 Do not skip the rule existence check.
 Do not silently invent a pool for the user.
 
+When the user's first intent is "run agent 105" or equivalent:
+
+1. ensure the rule first
+2. then ask which stock code to run
+3. if the agent has no assigned pool, ask whether to:
+   - run that stock directly now
+   - or open the UI to assign a pool for that agent
+
+If the user chooses the UI path:
+
+1. start backend and frontend if they are not already available
+2. briefly tell the user:
+   - open `Pools`
+   - create a pool
+   - add stocks into that pool
+   - open `Rules`
+   - assign the pool to the target remote agent
+   - use `Run Today` for the whole pool or `Run` for a single stock
+
+Keep this explanation short.
+Keep this branch selection in prompt/operator behavior. Reusable scripts should expose state checks and execution primitives, not hard-code the entire conversation flow.
+
 ## Operational Surfaces
 
 Preferred surfaces, in order:

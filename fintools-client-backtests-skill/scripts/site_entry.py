@@ -6,11 +6,13 @@ import json
 from pathlib import Path
 import subprocess
 import sys
+from urllib import error, request
 
 import discover_public_site
 
 
 SITE_URL = "https://warranties-movies-host-repository.trycloudflare.com/"
+BACKTESTS_BASE_URL = "http://127.0.0.1:8888/api/v1"
 SCRIPT_DIR = Path(__file__).resolve().parent
 RUN_AGENT_CLIENT = SCRIPT_DIR / "run_agent_client.py"
 
@@ -25,7 +27,7 @@ def parse_args():
     )
     parser.add_argument(
         "action",
-        choices=["resources", "agents", "skills", "stocks", "run-agent"],
+        choices=["resources", "agents", "skills", "stocks", "prepare-agent", "run-agent"],
         help="What to do on the fixed FinTools website.",
     )
     parser.add_argument("--agent", help="Agent id or name, for run-agent.")
@@ -44,6 +46,11 @@ def parse_args():
     parser.add_argument("--access-token")
     parser.add_argument("--work-dir")
     parser.add_argument("--task-id")
+    parser.add_argument(
+        "--backtests-base-url",
+        default=BACKTESTS_BASE_URL,
+        help="Backtests backend API base URL.",
+    )
     return parser.parse_args()
 
 
@@ -159,6 +166,67 @@ def infer_agent_type(agent_record, override=None):
     return "trading"
 
 
+def _request_json(url, method="GET", payload=None):
+    data = None
+    headers = {}
+    if payload is not None:
+        data = json.dumps(payload).encode("utf-8")
+        headers["Content-Type"] = "application/json"
+    req = request.Request(url, data=data, headers=headers, method=method)
+    try:
+        with request.urlopen(req) as response:
+            body = response.read().decode("utf-8")
+    except error.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace")
+        raise SystemExit("Request failed: {0} {1} -> {2}: {3}".format(method, url, exc.code, body))
+    except error.URLError as exc:
+        raise SystemExit("Request failed: {0} {1} -> {2}".format(method, url, exc.reason))
+    return json.loads(body) if body else {}
+
+
+def _api_url(base_url, path):
+    return base_url.rstrip("/") + path
+
+
+def prepare_agent(args):
+    agent_record = resolve_agent(args.agent)
+    backend_url = args.backtests_base_url.rstrip("/")
+    health = _request_json(_api_url(backend_url, "/health"))
+    ensure_payload = {
+        "agent_id": str(agent_record.get("id")),
+        "name": agent_record.get("name") or "Agent {0}".format(agent_record.get("id")),
+        "description": "Remote trading agent {0}".format(agent_record.get("id")),
+        "info": agent_record.get("a2a_url"),
+    }
+    ensure_result = _request_json(
+        _api_url(backend_url, "/get_rule/rule/ensure_remote_agent"),
+        method="POST",
+        payload=ensure_payload,
+    )
+    pools_result = _request_json(
+        _api_url(backend_url, "/get_rule/rule/agent/{0}/pools".format(agent_record.get("id"))),
+        method="GET",
+    )
+    assigned_pool_ids = pools_result.get("data", {}).get("assigned_pool_ids", [])
+    has_assigned_pool = bool(assigned_pool_ids)
+    return {
+        "site_url": SITE_URL.rstrip("/"),
+        "backend": {
+            "base_url": backend_url,
+            "health": health,
+        },
+        "agent": {
+            "id": agent_record.get("id"),
+            "name": agent_record.get("name"),
+            "category": agent_record.get("agent_category"),
+            "a2a_url": agent_record.get("a2a_url"),
+        },
+        "rule": ensure_result.get("data", {}),
+        "pools": pools_result.get("data", {}),
+        "has_assigned_pool": has_assigned_pool,
+    }
+
+
 def build_run_agent_command(args, agent_record):
     if not args.stock_code:
         fail("--stock-code is required for run-agent")
@@ -214,6 +282,9 @@ def main():
         return 0
     if args.action == "stocks":
         print(json.dumps(summarize_items("stocks", limit=100), ensure_ascii=True, indent=2))
+        return 0
+    if args.action == "prepare-agent":
+        print(json.dumps(prepare_agent(args), ensure_ascii=True, indent=2))
         return 0
     result = run_agent(args)
     print(json.dumps(result, ensure_ascii=True, indent=2))

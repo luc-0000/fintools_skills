@@ -25,11 +25,15 @@ DB_CLIENT_PATH = (
 UTILS_PATH = (
     Path(__file__).resolve().parents[1] / "agents_client" / "utils.py"
 )
-
-
 def build_dependency_stubs():
     httpx_module = types.ModuleType("httpx")
-    httpx_module.Timeout = lambda *args, **kwargs: ("timeout", args, kwargs)
+
+    class DummyTimeout:
+        def __init__(self, *args, **kwargs):
+            self.args = args
+            self.kwargs = kwargs
+
+    httpx_module.Timeout = DummyTimeout
     httpx_module.AsyncClient = object
 
     class HTTPStatusError(Exception):

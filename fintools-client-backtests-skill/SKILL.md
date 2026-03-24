@@ -49,6 +49,8 @@ Supported website operations:
 - "这个网站上都有什么 agents" -> call the site's public agents endpoint
 - "看看这个网站上有什么 skills" -> call the site's public skills endpoint
 - "看看这个网站上有什么 stocks" -> call the site's public stocks endpoint
+- "先准备一下 agent 105" -> ensure the matching backtests rule exists and inspect pool assignment state
+- "我想跑 agent 105" -> first prepare the agent, then ask for stock code, then ask whether to run directly or open UI for pool assignment when needed
 
 Use this thin website entrypoint:
 
@@ -62,9 +64,18 @@ Other examples:
 python3 fintools-agent-client/scripts/site_entry.py agents
 python3 fintools-agent-client/scripts/site_entry.py skills
 python3 fintools-agent-client/scripts/site_entry.py stocks
+python3 fintools-agent-client/scripts/site_entry.py prepare-agent --agent 105
 python3 fintools-agent-client/scripts/site_entry.py run-agent --agent 105 --stock-code 600519
 python3 fintools-agent-client/scripts/site_entry.py run-agent --agent quant_agent_vlm --stock-code 600519
 ```
+
+For `prepare-agent`, the wrapper:
+
+1. resolves the fixed-site agent by `id` or `name`
+2. checks local backtests backend health
+3. calls `POST /api/v1/get_rule/rule/ensure_remote_agent`
+4. calls `GET /api/v1/get_rule/rule/agent/{agent_id}/pools`
+5. returns stable state only: backend health, ensured rule, available pools, assigned pool ids, and whether a pool is already assigned
 
 For `run-agent`, the wrapper:
 
@@ -72,6 +83,24 @@ For `run-agent`, the wrapper:
 2. resolves the agent by `id` or `name`
 3. takes that agent's `a2a_url`
 4. calls `scripts/run_agent_client.py`
+
+## First Trading-Agent Request
+
+When the user asks to run a trading agent from the fixed website, use this order:
+
+1. Run `site_entry.py prepare-agent --agent ...` first.
+2. This must ensure the corresponding `remote_agent` rule exists in backtests before any run.
+3. Ask the user which stock code to run.
+4. If the agent has no assigned pool, ask one short follow-up:
+   direct run for the stock now, or open the UI to assign a pool for that agent.
+5. If the user chooses direct run, call `site_entry.py run-agent --agent ... --stock-code ...`.
+6. If the user chooses UI, start backend and frontend, then give only a short explanation:
+   open Pools, create pool, add stocks, go to Rules, assign pool, then use `Run Today` or single-stock `Run`.
+
+Do not silently invent a pool.
+Do not skip the rule ensure step.
+Do not ask the user to repeat the agent id after `prepare-agent` already resolved it.
+Keep the branching conversation in prompt space. The script should only expose reusable state and execution primitives.
 
 ## Quick Start
 

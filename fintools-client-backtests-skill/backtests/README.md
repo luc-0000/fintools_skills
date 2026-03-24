@@ -120,6 +120,20 @@ npm run dev -- --host 127.0.0.1
 7. 在 Rules 页面运行 agent。
 8. 在 Simulators 页面创建 simulator 并执行回测。
 
+如果是第一次让某个 agent 开始跑，推荐把流程拆成两步：
+
+1. 先确保这个 agent 已经进入 `remote_agent` rule。
+2. 再问用户这次是：
+   - 直接给一个股票代码先跑
+   - 还是先打开 UI 给这个 agent 配 pool
+
+如果用户选择 UI，给用户的说明保持最短即可：
+
+1. 打开 `Pools` 页面，新建一个 pool。
+2. 进入这个 pool，把股票代码加进去。
+3. 打开 `Rules` 页面，找到对应 agent，把这个 pool assign 给它。
+4. 回到 `Rules` 页面，整池用 `Run Today`，单股用 `Run`。
+
 ### 流程 B: agent 已经存在且已有 pool
 
 1. 打开 Rules 页面。

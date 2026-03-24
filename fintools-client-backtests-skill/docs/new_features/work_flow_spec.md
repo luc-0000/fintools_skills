@@ -149,6 +149,7 @@ This is the default fast path for repeat usage.
 If the target agent does not have an assigned pool:
 
 - the system must ask the user how they want to assign the pool
+- the system should first confirm which stock code the user wants to run now
 
 Supported options:
 
@@ -156,6 +157,15 @@ Supported options:
 - open the backtests UI and let the user configure it there
 
 The system must not silently create or assign an arbitrary pool without user intent.
+
+For the UI branch, the operator guidance should stay short:
+
+- open `Pools`
+- create a pool
+- add the target stocks
+- open `Rules`
+- assign the pool to the target agent
+- use `Run Today` or single-stock `Run`
 
 This pool-missing branch applies to choosing the stock scope for a new bulk agent run.
 

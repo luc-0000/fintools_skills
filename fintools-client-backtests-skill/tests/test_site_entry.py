@@ -155,6 +155,79 @@ class SiteEntryTests(unittest.TestCase):
         self.assertEqual(result["agent"]["id"], 105)
         self.assertEqual(mock_run.call_count, 1)
 
+    def test_prepare_agent_ensures_rule_and_reports_missing_pool(self):
+        args = type(
+            "Args",
+            (),
+            {
+                "agent": "105",
+                "stock_code": None,
+                "agent_type": None,
+                "mode": "streaming",
+                "access_token": None,
+                "work_dir": None,
+                "task_id": None,
+                "backtests_base_url": "http://127.0.0.1:8888/api/v1",
+            },
+        )()
+        agent_record = {
+            "id": 105,
+            "name": "quant_agent_vlm",
+            "agent_category": "trading",
+            "a2a_url": "https://warranties-movies-host-repository.trycloudflare.com/api/v1/agents/105/a2a/",
+        }
+        with mock.patch.object(self.module, "resolve_agent", return_value=agent_record), \
+             mock.patch.object(
+                 self.module,
+                 "_request_json",
+                 side_effect=[
+                     {"status": "healthy"},
+                     {"code": "SUCCESS", "data": {"id": 3006, "agent_id": "105", "created": True}},
+                     {"code": "SUCCESS", "data": {"assigned_pool_ids": [], "items": [], "rule_id": 3006}},
+                 ],
+             ) as mock_request:
+            result = self.module.prepare_agent(args)
+
+        self.assertEqual(result["rule"]["id"], 3006)
+        self.assertFalse(result["has_assigned_pool"])
+        self.assertEqual(mock_request.call_count, 3)
+
+    def test_prepare_agent_marks_ready_when_pool_already_assigned(self):
+        args = type(
+            "Args",
+            (),
+            {
+                "agent": "105",
+                "stock_code": None,
+                "agent_type": None,
+                "mode": "streaming",
+                "access_token": None,
+                "work_dir": None,
+                "task_id": None,
+                "backtests_base_url": "http://127.0.0.1:8888/api/v1",
+            },
+        )()
+        agent_record = {
+            "id": 105,
+            "name": "quant_agent_vlm",
+            "agent_category": "trading",
+            "a2a_url": "https://warranties-movies-host-repository.trycloudflare.com/api/v1/agents/105/a2a/",
+        }
+        with mock.patch.object(self.module, "resolve_agent", return_value=agent_record), \
+             mock.patch.object(
+                 self.module,
+                 "_request_json",
+                 side_effect=[
+                     {"status": "healthy"},
+                     {"code": "SUCCESS", "data": {"id": 3006, "agent_id": "105", "created": False}},
+                     {"code": "SUCCESS", "data": {"assigned_pool_ids": [9], "items": [{"id": 9, "name": "alpha", "assigned": True}], "rule_id": 3006}},
+                 ],
+             ):
+            result = self.module.prepare_agent(args)
+
+        self.assertTrue(result["has_assigned_pool"])
+        self.assertEqual(result["pools"]["assigned_pool_ids"], [9])
+
     def test_main_prints_agents_json(self):
         args = type(
             "Args",
@@ -177,3 +250,27 @@ class SiteEntryTests(unittest.TestCase):
 
         self.assertEqual(exit_code, 0)
         self.assertEqual(json.loads(stdout.getvalue())["agents"][0]["id"], 105)
+
+    def test_main_prints_prepare_agent_json(self):
+        args = type(
+            "Args",
+            (),
+            {
+                "action": "prepare-agent",
+                "agent": "105",
+                "stock_code": None,
+                "agent_type": None,
+                "mode": "streaming",
+                "access_token": None,
+                "work_dir": None,
+                "task_id": None,
+                "backtests_base_url": "http://127.0.0.1:8888/api/v1",
+            },
+        )()
+        with mock.patch.object(self.module, "parse_args", return_value=args), \
+             mock.patch.object(self.module, "prepare_agent", return_value={"rule": {"id": 3006}}), \
+             mock.patch("sys.stdout", new_callable=io.StringIO) as stdout:
+            exit_code = self.module.main()
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(json.loads(stdout.getvalue())["rule"]["id"], 3006)

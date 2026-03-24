@@ -472,8 +472,9 @@ def write_summary(work_dir, payload):
 
 def persist_trading_result(stock_code, mode, result, agent_id=None, agent_name=None):
     from database.trading_agent_database import TradingAgentDatabase
+    from scripts.trading_run_store import extract_trading_action
 
-    if "result" not in result or result.get("result") is None:
+    if not isinstance(result, dict):
         return {}
 
     run_id = (
@@ -481,7 +482,13 @@ def persist_trading_result(stock_code, mode, result, agent_id=None, agent_name=N
         or result.get("run_id")
         or result.get("id")
     )
-    payload = result.get("result", result)
+    payload = result.get("result")
+    if payload is None:
+        action = extract_trading_action(result)
+        if not action:
+            return {}
+        payload = {"action": action}
+
     database = TradingAgentDatabase()
     saved_run_id = database.save_run(
         stock_code=stock_code,
