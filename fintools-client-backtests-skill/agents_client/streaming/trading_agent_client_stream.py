@@ -8,10 +8,12 @@ import sys
 from agents_client.streaming.base_client import StreamingStockAgentClient, load_project_env, run_stock_agent_client
 from agents_client.utils import require_access_token
 
+
 load_project_env(__file__)
 
 DEFAULT_STOCK_CODE = "600519"
 DEFAULT_AGENT_URL = "http://127.0.0.1:8000/api/v1/agents/69/a2a/"
+DEFAULT_AGENT_URL = "http://8.153.13.5:8000/api/v1/agents/105/a2a/"
 
 
 class TradingAgentClientStream(StreamingStockAgentClient):
