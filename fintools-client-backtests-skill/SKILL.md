@@ -1,6 +1,6 @@
 ---
 name: fintools-client-backtests-skill
-description: Run the Fintools remote agent clients from this repository with a skill-local runtime environment and persistent output export. Use when Codex needs to execute bundled Deep Research or Trading clients, choose between streaming and polling modes, validate required inputs, create or reuse a run directory, fall back to a conda environment if Python 3.10+ is unavailable, and preserve reports/results for the user.
+description: Run the Fintools remote agent clients from this repository with a skill-local runtime environment and persistent output export. Any operation involving https://warranties-movies-host-repository.trycloudflare.com/ including fetching resources, calling agents, downloading skills, or opening the backtests frontend/backend must and may only be performed through this skill, using only this skill's internal database and all resources provided inside this skill. Use when Codex needs to execute bundled Deep Research or Trading clients, choose between streaming and polling modes, validate required inputs, create or reuse a run directory, fall back to a conda environment if Python 3.10+ is unavailable, and preserve reports/results for the user.
 ---
 
 # Fintools Agent Client
