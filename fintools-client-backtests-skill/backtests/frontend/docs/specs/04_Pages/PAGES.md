@@ -47,11 +47,11 @@
 
 ### Rules Index
 
-- Title: `Rules`
+- Title: `Agents`
 - Header action:
   - `Agent Schema`
 - Main content:
-  - tabs: `Local Agents`, `Remote Agents`
+  - tabs: `Remote Agents`
 - Auxiliary content:
   - informational schema modal
 
@@ -107,3 +107,4 @@
 - Desktop-first layouts
 - Low ornamentation
 - Table-first information architecture
+- `Rules` and `Simulators` are now remote-agent-only surfaces in the current UI copy

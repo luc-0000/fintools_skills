@@ -7,6 +7,8 @@
 - Source: src/router/index.tsx
 - Source: src/layouts/ProLayout.tsx
 - Source: src/store/index.ts
+- Source: src/global.css
+- Source: vite.config.ts
 
 ## Stack
 
@@ -27,12 +29,15 @@
   - `global.css`
   - inline style objects
 - No custom token package, CSS Modules, or Tailwind layer is present in active UI code.
+- `index.css` is present but not part of the active entry styling chain.
 
 ## UI Architecture Constraints
 
 - Pages are route-centric and tightly coupled to page-specific data hooks.
 - Reusable UI primitives are sparse.
 - Most reuse happens at the library level, not via local design-system components.
+- The frontend depends on Vite proxying `/api` to `http://localhost:8888`.
+- Standalone log pages intentionally bypass the admin shell route tree.
 
 ## Spec Boundary
 
@@ -51,3 +56,4 @@ If this UI is normalized later, the lowest-risk path would be:
 - replace repeated inline page shell styles with a shared admin-page wrapper
 - standardize modal/table/action-bar compositions
 - retire or remove unused starter CSS and assets
+- replace anchor-click pseudo-buttons with semantic button/link primitives

@@ -6,6 +6,10 @@
 - Source: src/global.css
 - Source: src/index.css
 - Source: src/layouts/ProLayout.tsx
+- Source: src/pages/Pools/index.tsx
+- Source: src/pages/Rules/index.tsx
+- Source: src/pages/Simulators/index.tsx
+- Source: src/pages/AgentLog/index.tsx
 - Source: package.json
 
 ## UI Baseline
@@ -13,6 +17,10 @@
 - Stack: React 19 + React Router + Ant Design 5 + ProComponents
 - Locale: Antd `zh_CN`
 - Shell: ProLayout mixed admin layout with fixed header, fixed sidebar, and fluid content width
+- Navigation sections:
+  - `Pools`
+  - `Agents`
+  - `Simulators`
 - Theme source:
   - ProLayout `navTheme="realDark"`
   - Ant Design default component theme
@@ -32,6 +40,8 @@
   - agent log panel background: `#1e1e1e`
   - agent log panel text: `#d4d4d4`
   - helper gray text: `#999`
+  - white text on dark strips: `#fff`
+  - muted strip/body text: `#d9d9d9`
 
 ### Typography
 
@@ -49,6 +59,8 @@
   - `8px` button gaps
   - `12px` to `16px` internal blocks
   - `16px` section margin bottoms
+  - log page outer padding: `24px 48px`
+  - modal form vertical spacing often `16px`
 
 ### Radius
 
@@ -71,6 +83,15 @@
 - No local motion tokens or animation patterns found.
 - Interactions inherit Antd transitions and browser-native behavior.
 
+## Layout Baseline
+
+- Default admin pages use:
+  - root wrapper `<div style={{ padding: '20px' }}>`
+  - plain `h1` headline
+  - optional right-side header action row
+  - one `Tabs` block or one `ProTable` block
+- The standalone log page intentionally breaks from the admin shell and uses a dark full-viewport monitor layout.
+
 ## Global Styles
 
 ### Reset
@@ -86,6 +107,7 @@
 
 - Body font is globally normalized
 - No branded body background is set in active global CSS
+- `body` keeps the browser default page background unless overwritten by page-level inline styles
 
 ### Scrollbars
 
@@ -101,3 +123,7 @@
 
 - This frontend is library-led rather than token-led.
 - The real consistency comes from Antd/ProLayout defaults and repeated admin-page composition, not from a bespoke design system.
+- Most visible design decisions live in:
+  - inline style objects inside page files
+  - ProLayout preset choices
+  - a small number of dark-surface monitor/config strips

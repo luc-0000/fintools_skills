@@ -15,6 +15,7 @@
 - Section internals often use `Tabs`.
 - Detail exploration uses route transitions from table cells.
 - Long-running execution logs open in a separate dedicated page.
+- Default landing route redirects to `/rule`.
 
 ## Page Skeleton Pattern
 
@@ -23,6 +24,9 @@
   - title row
   - optional right-side action
   - tabs or one main grid
+- Header actions are lightweight:
+  - link button for help/instructions
+  - standard button for config/create
 
 ## Search / Filter Pattern
 
@@ -50,11 +54,19 @@
 - Delete:
   - short confirmation modal with plain warning text
 
+## Form Pattern
+
+- Many create flows reuse `ProTable type="form"` instead of a dedicated form page.
+- Edit flows often switch to `ProForm` with one or two targeted fields.
+- Select-based forms prefer preloaded options from local model hooks.
+
 ## Execution Pattern
 
 - Rule execution:
   - run action opens log route in a new window
   - progress is also visible inline in rule list
+  - runtime readiness is checked before starting the run
+  - a temporary popup shell is opened before the async start call completes
 - Simulator execution:
   - run action remains inside row and uses a small spinner
 
@@ -68,9 +80,13 @@
 - Error:
   - Antd `message.error`
   - no custom exception screens
+- Success:
+  - Antd `message.success`
+  - log page success toast on `complete`
 
 ## Content Pattern
 
 - Copy is short, direct, and ops-oriented.
 - Labels are mostly English even though locale is Chinese.
 - UI emphasizes admin task completion rather than narrative guidance.
+- Instructional modals carry the densest explanatory copy in the whole UI.
