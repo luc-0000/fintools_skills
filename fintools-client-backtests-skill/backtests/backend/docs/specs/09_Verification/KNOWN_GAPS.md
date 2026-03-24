@@ -33,3 +33,23 @@ The codebase contains comments and compatibility shims from earlier Flask/model-
 - globally shared mutable runtime state
 
 These do not block replication, but they should be treated as explicit design debt rather than accidental omissions.
+
+## 7. Execution State Is Memory-Resident
+
+`execution_manager.py` stores live execution objects only in process memory.
+
+Implications:
+
+- restart loses active and historical in-memory execution ids
+- SSE log replay works only within current process lifetime
+- this is a real behavior contract, not just an implementation detail
+
+## 8. Error Semantics Are Intentionally Mixed
+
+The backend uses more than one failure style:
+
+- legacy `FAILURE` payloads returned in-band
+- `HTTPException` with non-200 status for newer readiness/start paths
+- streamed log errors for long-running execution
+
+A rewrite that normalizes all three into one style may be cleaner, but it would not be wire-compatible.
