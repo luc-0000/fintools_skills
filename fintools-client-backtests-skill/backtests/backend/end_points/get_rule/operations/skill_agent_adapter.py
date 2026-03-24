@@ -4,7 +4,6 @@ import json
 import os
 import re
 import sys
-from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 
 
@@ -12,64 +11,15 @@ REPO_ROOT = Path(__file__).resolve().parents[5]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from scripts.run_agent_client import (
-    default_runs_parent_dir,
-    load_cached_access_token,
-    save_access_token,
-    token_file_path,
-)
+from end_points.common.utils.runtime_readiness import resolve_runtime_token
 
 RUN_AGENT_CLIENT_SCRIPT = REPO_ROOT / "scripts" / "run_agent_client.py"
 SUMMARY_PATH_PATTERN = re.compile(r"^\[result\] Summary written to: (?P<path>.+)$")
 
 
-PLACEHOLDER_TOKEN_MARKERS = (
-    "your-token",
-    "your-secret",
-    "your-fintools",
-    "placeholder",
-)
-
-
-def _is_placeholder_token(token: str | None) -> bool:
-    if not token:
-        return False
-    normalized = token.strip().lower()
-    return any(marker in normalized for marker in PLACEHOLDER_TOKEN_MARKERS)
-
-
 def _resolve_token(access_token: str | None = None) -> str:
-    parent_dir = default_runs_parent_dir()
-    token_path = token_file_path(parent_dir)
-
-    if access_token:
-        if _is_placeholder_token(access_token):
-            raise RuntimeError("Invalid FINTOOLS access token: explicit placeholder token was provided.")
-        save_access_token(parent_dir, access_token)
-        return access_token
-
-    token = load_cached_access_token(parent_dir)
-    if token:
-        if _is_placeholder_token(token):
-            raise RuntimeError(
-                "Invalid FINTOOLS access token cache at {0}. Replace the placeholder token with a real cached token.".format(
-                    token_path
-                )
-            )
-        return token
-
-    env_token = os.environ.get("FINTOOLS_ACCESS_TOKEN")
-    if env_token:
-        if _is_placeholder_token(env_token):
-            raise RuntimeError("Invalid FINTOOLS access token: environment variable contains a placeholder token.")
-        save_access_token(parent_dir, env_token)
-        return env_token
-
-    raise RuntimeError(
-        "Missing FINTOOLS access token. Provide an explicit token, cache it under {0}, or set FINTOOLS_ACCESS_TOKEN.".format(
-            token_path
-        )
-    )
+    token_state = resolve_runtime_token(access_token=access_token, require_token=True)
+    return str(token_state["token"])
 
 
 class _StreamingQueueWriter:

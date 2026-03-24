@@ -4,7 +4,10 @@ import type { PageParams } from '@/types'
 
 // Rule Agent 服务（运行 agent 类型的 rule）
 export const agentService = {
-  ensureRuntimeReady: () => {
+  ensureRuntimeReady: (payload?: { access_token?: string; require_token?: boolean }) => {
+    if (payload) {
+      return post('/v1/get_rule/runtime_ready', payload)
+    }
     return get('/v1/get_rule/runtime_ready')
   },
 

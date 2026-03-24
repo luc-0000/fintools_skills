@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends, Query
+from fastapi import APIRouter, HTTPException, Depends, Query, Body
 from fastapi.responses import StreamingResponse
 from typing import Dict, Any, Optional
 import json
@@ -569,6 +569,24 @@ async def get_runtime_ready():
             'code': 'SUCCESS',
             'data': readiness,
         }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/runtime_ready")
+async def post_runtime_ready(payload: Dict[str, Any] | None = Body(default=None)):
+    try:
+        payload = payload or {}
+        readiness = ensure_runtime_ready(
+            access_token=payload.get("access_token"),
+            require_token=bool(payload.get("require_token", False)),
+        )
+        return {
+            'code': 'SUCCESS',
+            'data': readiness,
+        }
+    except RuntimeError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

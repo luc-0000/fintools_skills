@@ -3,6 +3,7 @@
 
 import argparse
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -188,10 +189,29 @@ def _api_url(base_url, path):
     return base_url.rstrip("/") + path
 
 
+def ensure_backtests_runtime(args):
+    backend_url = args.backtests_base_url.rstrip("/")
+    access_token = args.access_token or os.environ.get("FINTOOLS_ACCESS_TOKEN")
+    payload = {
+        "require_token": False,
+    }
+    if access_token:
+        payload["access_token"] = access_token
+        payload["require_token"] = True
+
+    readiness = _request_json(
+        _api_url(backend_url, "/get_rule/runtime_ready"),
+        method="POST",
+        payload=payload,
+    )
+    return readiness.get("data", {})
+
+
 def prepare_agent(args):
     agent_record = resolve_agent(args.agent)
     backend_url = args.backtests_base_url.rstrip("/")
     health = _request_json(_api_url(backend_url, "/health"))
+    runtime_ready = ensure_backtests_runtime(args)
     ensure_payload = {
         "agent_id": str(agent_record.get("id")),
         "name": agent_record.get("name") or "Agent {0}".format(agent_record.get("id")),
@@ -215,6 +235,7 @@ def prepare_agent(args):
             "base_url": backend_url,
             "health": health,
         },
+        "runtime_ready": runtime_ready,
         "agent": {
             "id": agent_record.get("id"),
             "name": agent_record.get("name"),

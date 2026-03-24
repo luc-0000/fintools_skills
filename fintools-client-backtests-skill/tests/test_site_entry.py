@@ -182,6 +182,7 @@ class SiteEntryTests(unittest.TestCase):
                  "_request_json",
                  side_effect=[
                      {"status": "healthy"},
+                     {"code": "SUCCESS", "data": {"token_ready": False, "runs_db_ready": True}},
                      {"code": "SUCCESS", "data": {"id": 3006, "agent_id": "105", "created": True}},
                      {"code": "SUCCESS", "data": {"assigned_pool_ids": [], "items": [], "rule_id": 3006}},
                  ],
@@ -190,7 +191,8 @@ class SiteEntryTests(unittest.TestCase):
 
         self.assertEqual(result["rule"]["id"], 3006)
         self.assertFalse(result["has_assigned_pool"])
-        self.assertEqual(mock_request.call_count, 3)
+        self.assertFalse(result["runtime_ready"]["token_ready"])
+        self.assertEqual(mock_request.call_count, 4)
 
     def test_prepare_agent_marks_ready_when_pool_already_assigned(self):
         args = type(
@@ -219,6 +221,7 @@ class SiteEntryTests(unittest.TestCase):
                  "_request_json",
                  side_effect=[
                      {"status": "healthy"},
+                     {"code": "SUCCESS", "data": {"token_ready": True, "token_source": "explicit", "token_persisted": True}},
                      {"code": "SUCCESS", "data": {"id": 3006, "agent_id": "105", "created": False}},
                      {"code": "SUCCESS", "data": {"assigned_pool_ids": [9], "items": [{"id": 9, "name": "alpha", "assigned": True}], "rule_id": 3006}},
                  ],
@@ -227,6 +230,30 @@ class SiteEntryTests(unittest.TestCase):
 
         self.assertTrue(result["has_assigned_pool"])
         self.assertEqual(result["pools"]["assigned_pool_ids"], [9])
+        self.assertTrue(result["runtime_ready"]["token_ready"])
+
+    def test_ensure_backtests_runtime_posts_explicit_token(self):
+        args = type(
+            "Args",
+            (),
+            {
+                "access_token": "real-token",
+                "backtests_base_url": "http://127.0.0.1:8888/api/v1",
+            },
+        )()
+        with mock.patch.object(
+            self.module,
+            "_request_json",
+            return_value={"code": "SUCCESS", "data": {"token_ready": True, "token_source": "explicit"}},
+        ) as mock_request:
+            result = self.module.ensure_backtests_runtime(args)
+
+        self.assertTrue(result["token_ready"])
+        mock_request.assert_called_once_with(
+            "http://127.0.0.1:8888/api/v1/get_rule/runtime_ready",
+            method="POST",
+            payload={"require_token": True, "access_token": "real-token"},
+        )
 
     def test_main_prints_agents_json(self):
         args = type(

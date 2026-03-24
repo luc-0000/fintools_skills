@@ -185,14 +185,14 @@ const RuleList: React.FC<RuleListProps> = ({ ruleType }) => {
           <a
             onClick={async () => {
               if (record.id) {
-                const popup = openPendingLogWindow()
-                if (!popup) {
-                  return
-                }
+                let popup: Window | null = null
                 try {
                   const ready = await ensureRuntimeReadyOrNotify()
                   if (!ready) {
-                    closePendingLogWindow(popup)
+                    return
+                  }
+                  popup = openPendingLogWindow()
+                  if (!popup) {
                     return
                   }
                   const response = await agentService.startRuleExecution(record.id)
@@ -301,14 +301,14 @@ const RuleList: React.FC<RuleListProps> = ({ ruleType }) => {
                                 size="small"
                                 type="primary"
                                 onClick={async () => {
-                                  const popup = openPendingLogWindow()
-                                  if (!popup) {
-                                    return
-                                  }
+                                  let popup: Window | null = null
                                   try {
                                     const ready = await ensureRuntimeReadyOrNotify()
                                     if (!ready) {
-                                      closePendingLogWindow(popup)
+                                      return
+                                    }
+                                    popup = openPendingLogWindow()
+                                    if (!popup) {
                                       return
                                     }
                                     const response = await agentService.startStockExecution(ruleId!, stock.code) as any

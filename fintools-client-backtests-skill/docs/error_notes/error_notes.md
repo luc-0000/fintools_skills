@@ -133,7 +133,25 @@
 - Files involved:
   - `backtests/frontend/src/pages/Rules/components/RuleList.tsx`
 
-### 2. Trading-agent execution path did not persist to `trading_agent_runs.db` before derived-table updates
+### 2. Backtests UI readiness and agent-run readiness had drifted apart
+
+- Symptom:
+  - immediately after skill install, opening the backtests UI could show a runnable page even though remote-agent runtime was not actually ready
+  - if the access token only existed in host memory and had not yet been persisted to `.runtime/runs/.fintools_access_token`, clicking `Run` or `Run Today` could fail after the UI opened, which users perceived as the run page flashing and aborting
+  - in a fresh install, opening the backtests UI could also leave `.runtime/database/backtests.sqlite3` missing, so backend endpoints such as `GET /api/v1/get_pool/pool_list` failed before the page could render pool data
+- Root cause:
+  - UI-entry preparation and remote-agent execution preparation were not using the same code path
+  - `runtime_readiness.py` had only been ensuring token cache and `trading_agent_runs.db`
+  - it was not also bootstrapping the main `backtests.sqlite3` database that the UI list endpoints depend on
+- Fix:
+  - move token resolution and persistence into `backtests/backend/end_points/common/utils/runtime_readiness.py` as the single source of truth
+  - let both the backtests readiness endpoint and the actual execution path reuse that same token-resolution function
+  - add `POST /api/v1/get_rule/runtime_ready` so callers such as `scripts/site_entry.py prepare-agent` can pass an explicit in-memory token and persist it before the UI opens
+  - extend that same readiness step to bootstrap `.runtime/database/backtests.sqlite3` before the UI opens, so pool-list and other backtests endpoints have their primary database ready
+- Verification:
+  - regression suite now covers explicit-token persistence, check-only runtime readiness, creation of `backtests.sqlite3`, POST runtime readiness, and `site_entry.py prepare-agent` runtime bootstrap behavior
+
+### 3. Trading-agent execution path did not persist to `trading_agent_runs.db` before derived-table updates
 
 - Symptom:
   - a real remote-agent run could finish and produce logs or reports
@@ -156,7 +174,7 @@
   - `backtests/backend/end_points/get_rule/operations/agent_streaming.py`
   - `backtests/backend/end_points/common/utils/trading_agent_sync.py`
 
-### 3. UI `Run` / `Run Today` execution originally bypassed the standard `.runtime/runs` artifact path
+### 4. UI `Run` / `Run Today` execution originally bypassed the standard `.runtime/runs` artifact path
 
 - Symptom:
   - the backtests UI log page could stream live output
