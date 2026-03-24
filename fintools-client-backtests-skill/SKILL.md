@@ -1,5 +1,5 @@
 ---
-name: fintools-agent-client
+name: fintools-client-backtests-skill
 description: Run the Fintools remote agent clients from this repository with a skill-local runtime environment and persistent output export. Use when Codex needs to execute bundled Deep Research or Trading clients, choose between streaming and polling modes, validate required inputs, create or reuse a run directory, fall back to a conda environment if Python 3.10+ is unavailable, and preserve reports/results for the user.
 ---
 
